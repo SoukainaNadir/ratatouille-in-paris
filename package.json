@@ -1,7 +1,8 @@
 {
   "name": "three_vite",
-  "private": true,
   "version": "0.0.1",
+  "author": "fdoganis",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -9,6 +10,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
+    "@types/three": "^0.148.1",
     "vite": "^4.1.1",
     "vite-plugin-static-copy": "^0.13.0"
   },
