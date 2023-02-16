@@ -1,6 +1,17 @@
 // Import only what you need, to help your bundler optimize final code size using tree shaking
 // see https://developer.mozilla.org/en-US/docs/Glossary/Tree_shaking)
 
+import {
+  PerspectiveCamera,
+  Scene,
+  WebGLRenderer,
+  BoxGeometry,
+  Mesh,
+  MeshNormalMaterial,
+  AmbientLight,
+  Clock
+} from 'three';
+
 // If you prefer to import the whole library, with the THREE prefix, use the following line instead:
 // import * as THREE from 'three'
 
