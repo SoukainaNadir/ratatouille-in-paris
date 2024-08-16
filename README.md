@@ -25,5 +25,13 @@ Install [Node.js](https://nodejs.org)
 - `npm run dev` : launches a server and opens your browser in `https://localhost:5173` by default
 - Edit your code : your changes are reflected instantly!
 
+## HTTPS
 
+HTTPS is required to use some features such as the WebXR API
+
+- In order to use https, copy your certificates to the `.cert` folder, and change the `serve` command to:
+
+`"serve": "http-server dist -S -C .cert/cert.pem -K .cert/key.pem`
+
+Alternatively, for simple personal projects, use tunnelling solutions such as `ngrok`
 
