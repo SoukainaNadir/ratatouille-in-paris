@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "mhutchie.git-graph",
+    "cesium.gltf-vscode",
+    "naumovs.color-highlight",
+    "slevesque.shader",
+    "raczzalan.webgl-glsl-editor",
+    "Gruntfuggly.todo-tree"
+  ]
+}
