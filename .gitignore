@@ -12,6 +12,7 @@ dist
 dist-ssr
 .cert
 *.local
+*.js.map
 
 # Editor directories and files
 .vscode/*
