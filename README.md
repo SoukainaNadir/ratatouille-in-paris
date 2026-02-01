@@ -1,4 +1,18 @@
-# three_vite
+# three_vite_ts
+
+TypeScript version of https://github.com/fdoganis/three_vite 
+
+Requires TypeScript :
+
+```bash
+npm install -g typescript
+```
+on macOS :
+
+```bash
+sudo npm install -g typescript
+```
+
 Basic THREE.js template using [Vite](https://vitejs.dev).
 
 Allows testing and modifying [official THREE.js examples](https://threejs.org/examples/) locally, at lightning speed.
@@ -11,7 +25,7 @@ Pre-configured to support :
 - glTF file loading
 - ammo.js wasm physics library
 - VSCode launch scripts
-- THREE.js type definitions : for IntelliSense in VS Code
+- **TypeScript** with THREE.js type definitions : for IntelliSense in VS Code
 - recommended VS Code extensions
 - deployment
 
