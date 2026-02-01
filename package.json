@@ -1,12 +1,12 @@
 {
-  "name": "three_vite",
+  "name": "three_vite_ts",
   "version": "0.0.6",
   "author": "fdoganis",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "purge": "npm run clean && rm -rf node_modules",
@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.182.0",
+    "typescript": "^5.9.3",
     "http-server": "^14.1.1",
     "vite": "^6.4.1",
     "vite-plugin-glsl": "^0.4.0",
