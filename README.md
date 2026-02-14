@@ -16,30 +16,49 @@ sudo npm install -g typescript
 Basic THREE.js template using [Vite](https://vitejs.dev).
 
 Allows testing and modifying [official THREE.js examples](https://threejs.org/examples/) locally, at lightning speed.
-After trying Parcel and Rollup, this is probably the most developer-friendly to start THREE.js development in 2024 : it's insanely fast, it supports live reload out of the box, while remaining simple to use and to extend.
+After trying Parcel and Rollup, this is probably the most developer-friendly setup to start THREE.js development in 2026 : it's insanely fast, it supports live reload out of the box, while catching bugs early and remaining simple to use and to extend.
 
 ## Batteries included
 
-Pre-configured to support :
+### Pre-configured 
+
+Supports :
 
 - glTF file loading
+  - with DRACO compression support
 - ammo.js wasm physics library
+  - but you should really give [cannon-es](https://github.com/pmndrs/cannon-es) a try!
 - VSCode launch scripts
-- **TypeScript** with THREE.js type definitions : for IntelliSense in VS Code
+- **TypeScript** with THREE.js type definitions
+  - for IntelliSense in VS Code
 - recommended VS Code extensions
-- deployment
 
-Have a look at vite.config.js and customize it to your needs (additional libraries, file formats etc.).
+### Deployment to GitHub pages
+  - make sure to [enable the publishing source in the settings of your repo](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site#publishing-with-a-custom-github-actions-workflow)
+  - in `Source` select `GitHub Actions`
+    - see `deploy.yml` in `.github` folder
+  - [set your website URL](https://github.com/orgs/community/discussions/46986)
+    - in you repo click on the `gear icon` next to `About`
+    - in `Website` add the following URL :
+      - https://[GITUSERNAME].github.io/[REPOSITORY]_NAME
+
+Have a look at vite.config.js and customize it to meet your needs (additional libraries, file formats etc.).
 
 ## Installation
 
-Install [Node.js](https://nodejs.org)
+- [Create your repo from template](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template#creating-a-repository-from-a-template)
+  - if you don't want to use the code as a template, clone or download repo
+- Install [Node.js](https://nodejs.org)
 
-- Clone or download repo
-- run `npm install` : fetches and install all dependencies
-- `npm run dev` : launches a server and opens your browser in `https://localhost:5173` by default
-  - Edit your code : your changes are reflected instantly!
-- `npm run build` : packages all code and resources into the `dist` folder, ready for deployment.
+- Commands (see package.json) 
+  - `npm install` : fetches and installs all dependencies
+  - `npm run dev` : launches a server and opens your browser in `https://localhost:5173` by default.
+    - **fast**: no files generated
+    - edit your code : your changes are reflected instantly!
+  - `npm run build` : packages all code and resources into the `dist` folder, ready for deployment.
+    - also generates main.js and map files to use in a pure JS environment
+  - `npm run preview` : launches app using built files from dist folder
+  - `npm run serve` : same as above, but more robust and faithful to final deployed app
 
 
 ## HTTPS
@@ -80,8 +99,9 @@ npm run dev
 - run `cloudflared` tunnel
 
 ```bash
-cloudflared tunnel --url http://localhost:5173/
+npm run cloud
 ```
+This command runs : `cloudflared tunnel --url http://localhost:5173/`
 
 This will create a random temporary address ending in `*.trycloudflare.com`
 
@@ -112,8 +132,8 @@ This repository includes a ready-to-use GitHub Actions workflow located at `.git
 
 #### Steps to Enable GitHub Pages Deployment:
 
-0. **IMPORTANT: Set the `base` variable** in `vite.config.js` (default name `/three_vite`) to the actual name of your repository. Your app will be deployed to https://[GITUSERNAME].github.io/[REPOSITORY_NAME] (for example https://fdoganis.github.io/three_vite)
-1. **Fork this repository** to your own GitHub account.
+0. **IMPORTANT: Set the `base` variable** in `vite.config.js` (default name `/three_vite_ts`) to the actual name of your repository. Your app will be deployed to https://[GITUSERNAME].github.io/[REPOSITORY_NAME] (for example https://fdoganis.github.io/three_vite_ts)
+1. Create your repository from this template or **Fork this repository** to your own GitHub account.
 2. Navigate to your forked repository’s **Settings**.
 3. Scroll down to the **Pages** section.
 4. Under **Build and Deployment**, change the **Source** to **GitHub Actions**.
