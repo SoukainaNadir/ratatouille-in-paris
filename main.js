@@ -27,19 +27,19 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // Example of hard link to official repo for data, if needed
 // const MODEL_PATH = 'https://raw.githubusercontent.com/mrdoob/three.js/r173/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb';
 // INSERT CODE HERE
-var scene = new Scene();
-var aspect = window.innerWidth / window.innerHeight;
-var camera = new PerspectiveCamera(75, aspect, 0.1, 1000);
-var light = new AmbientLight(0xffffff, 1.0); // soft white light
+const scene = new Scene();
+const aspect = window.innerWidth / window.innerHeight;
+const camera = new PerspectiveCamera(75, aspect, 0.1, 1000);
+const light = new AmbientLight(0xffffff, 1.0); // soft white light
 scene.add(light);
-var renderer = new WebGLRenderer();
+const renderer = new WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
-var controls = new OrbitControls(camera, renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
 controls.listenToKeyEvents(window); // optional
-var geometry = new BoxGeometry(1, 1, 1);
-var material = new MeshNormalMaterial();
-var cube = new Mesh(geometry, material);
+const geometry = new BoxGeometry(1, 1, 1);
+const material = new MeshNormalMaterial();
+const cube = new Mesh(geometry, material);
 scene.add(cube);
 function loadData() {
     new GLTFLoader()
@@ -47,7 +47,7 @@ function loadData() {
         .load('test.glb', gltfReader);
 }
 function gltfReader(gltf) {
-    var testModel = null;
+    let testModel = null;
     testModel = gltf.scene;
     if (testModel != null) {
         console.log("Model loaded:  " + testModel);
@@ -59,12 +59,12 @@ function gltfReader(gltf) {
 }
 loadData();
 camera.position.z = 3;
-var clock = new Clock();
+const clock = new Clock();
 // Main loop
-var animation = function () {
+const animation = () => {
     renderer.setAnimationLoop(animation); // requestAnimationFrame() replacement, compatible with XR 
-    var delta = clock.getDelta();
-    var elapsed = clock.getElapsedTime();
+    const delta = clock.getDelta();
+    const elapsed = clock.getElapsedTime();
     // can be used in shaders: uniforms.u_time.value = elapsed;
     cube.rotation.x = elapsed / 2;
     cube.rotation.y = elapsed / 1;
