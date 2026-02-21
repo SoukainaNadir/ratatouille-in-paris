@@ -1,10 +1,10 @@
 "use strict";
 // ⚠️ DO NOT EDIT main.js DIRECTLY ⚠️
-// This file is generated from the TypeScript source main.ts
-// Any changes made here will be overwritten.
+// main.js is generated from the TypeScript source main.ts
+// Any changes made in main.js will be overwritten.
 // Import only what you need, to help your bundler optimize final code size using tree shaking
 // see https://developer.mozilla.org/en-US/docs/Glossary/Tree_shaking)
-import { PerspectiveCamera, Scene, WebGLRenderer, BoxGeometry, Mesh, MeshNormalMaterial, AmbientLight, Clock } from 'three';
+import { PerspectiveCamera, Scene, WebGLRenderer, BoxGeometry, Mesh, MeshNormalMaterial, AmbientLight, Timer } from 'three';
 // If you prefer to import the whole library, with the THREE prefix, use the following line instead:
 // import * as THREE from 'three'
 // NOTE: three/addons alias is supported by Rollup: you can use it interchangeably with three/examples/jsm/  
@@ -59,12 +59,14 @@ function gltfReader(gltf) {
 }
 loadData();
 camera.position.z = 3;
-const clock = new Clock();
+const timer = new Timer();
+timer.connect(document);
 // Main loop
 const animation = () => {
     renderer.setAnimationLoop(animation); // requestAnimationFrame() replacement, compatible with XR 
-    const delta = clock.getDelta();
-    const elapsed = clock.getElapsedTime();
+    timer.update();
+    //const delta = timer.getDelta();
+    const elapsed = timer.getElapsed();
     // can be used in shaders: uniforms.u_time.value = elapsed;
     cube.rotation.x = elapsed / 2;
     cube.rotation.y = elapsed / 1;
