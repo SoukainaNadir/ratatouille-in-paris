@@ -15,8 +15,6 @@
   },
   "devDependencies": {
     "@types/three": "^0.183.1",
-    "fs": "^0.0.1-security",
-    "glob": "^13.0.6",
     "http-server": "^14.1.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
