@@ -1,131 +1,46 @@
-"use strict";
+import { GameEngine } from "../three_vite_ts/src/engine/GameEngine";
+import { StoryBook } from "../three_vite_ts/src/scenes/StoryBook";
 
-// ⚠️ DO NOT EDIT main.js DIRECTLY ⚠️
-// main.js is generated from the TypeScript source main.ts
-// Any changes made in main.js will be overwritten.
+async function bootstrap() {
+  const splashScreen = document.getElementById('splash-screen')
+  const loading      = document.getElementById('loading')
+  const canvas       = document.getElementById('game-canvas') as HTMLCanvasElement | null
 
-// Import only what you need, to help your bundler optimize final code size using tree shaking
-// see https://developer.mozilla.org/en-US/docs/Glossary/Tree_shaking)
+  if (!canvas) { console.error('❌ #game-canvas manquant'); return }
+  if (!loading) { console.error('❌ #loading manquant'); return }
+  if (!splashScreen) { console.error('❌ #splash-screen manquant'); return }
 
-import {
-  PerspectiveCamera,
-  Scene,
-  WebGLRenderer,
-  BoxGeometry,
-  Mesh,
-  MeshNormalMaterial,
-  AmbientLight,
-  Timer
-} from 'three';
+  const enginePromise = (async () => {
+    const engine = new GameEngine(canvas)
+    await engine.init()
+    return engine
+  })()
 
-// If you prefer to import the whole library, with the THREE prefix, use the following line instead:
-// import * as THREE from 'three'
+  splashScreen.addEventListener('click', async () => {
+    const engine = await enginePromise
 
-// NOTE: three/addons alias is supported by Rollup: you can use it interchangeably with three/examples/jsm/  
+    engine.startMenuMusic()
 
-// Importing Ammo can be tricky.
-// Vite supports webassembly: https://vitejs.dev/guide/features.html#webassembly
-// so in theory this should work:
-//
-// import ammoinit from 'three/addons/libs/ammo.wasm.js?init';
-// ammoinit().then((AmmoLib) => {
-//  Ammo = AmmoLib.exports.Ammo()
-// })
-//
-// But the Ammo lib bundled with the THREE js examples does not seem to export modules properly.
-// A solution is to treat this library as a standalone file and copy it using 'vite-plugin-static-copy'.
-// See vite.config.js
-// 
-// Consider using alternatives like Oimo or cannon-es
-import {
-  OrbitControls
-} from 'three/addons/controls/OrbitControls.js';
+    splashScreen.style.opacity = '0'
+    splashScreen.style.transition = 'opacity 0.5s'
+    loading.style.display = 'flex'
 
-import {
-  GLTF,
-  GLTFLoader
-} from 'three/addons/loaders/GLTFLoader.js';
+    setTimeout(() => { splashScreen.style.display = 'none' }, 500)
 
-// Example of hard link to official repo for data, if needed
-// const MODEL_PATH = 'https://raw.githubusercontent.com/mrdoob/three.js/r173/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb';
+    setTimeout(() => {
+      loading.style.opacity = '0'
+      loading.style.transition = 'opacity 0.5s'
 
+      setTimeout(() => {
+        loading.style.display = 'none'
 
-// INSERT CODE HERE
+        new StoryBook(() => {
+          engine.start()
+        })
 
-const scene = new Scene();
-const aspect = window.innerWidth / window.innerHeight;
-const camera = new PerspectiveCamera(75, aspect, 0.1, 1000);
-
-const light = new AmbientLight(0xffffff, 1.0); // soft white light
-scene.add(light);
-
-const renderer = new WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.listenToKeyEvents(window); // optional
-
-const geometry = new BoxGeometry(1, 1, 1);
-const material = new MeshNormalMaterial();
-const cube = new Mesh(geometry, material);
-
-scene.add(cube);
-
-function loadData() {
-  new GLTFLoader()
-    .setPath('assets/models/')
-    .load('test.glb', gltfReader);
+      }, 500)
+    }, 2500)
+  })
 }
 
-function gltfReader(gltf : GLTF) {
-  let testModel = null;
-
-  testModel = gltf.scene;
-
-  if (testModel != null) {
-    console.log("Model loaded:  " + testModel);
-    scene.add(gltf.scene);
-  } else {
-    console.log("Load FAILED.  ");
-  }
-}
-
-loadData();
-
-
-camera.position.z = 3;
-
-
-const timer = new Timer();
-timer.connect(document);
-
-// Main loop
-const animation = () => {
-
-  renderer.setAnimationLoop(animation); // requestAnimationFrame() replacement, compatible with XR 
-
-  timer.update();
-  //const delta = timer.getDelta();
-  const elapsed = timer.getElapsed();
-
-  // can be used in shaders: uniforms.u_time.value = elapsed;
-
-  cube.rotation.x = elapsed / 2;
-  cube.rotation.y = elapsed / 1;
-
-  renderer.render(scene, camera);
-};
-
-animation();
-
-window.addEventListener('resize', onWindowResize, false);
-
-function onWindowResize() {
-
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
-
-}
+bootstrap().catch(console.error)
