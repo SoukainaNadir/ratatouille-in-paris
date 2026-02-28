@@ -1,14 +1,15 @@
-import { GameEngine } from "../three_vite_ts/src/engine/GameEngine";
-import { StoryBook } from "../three_vite_ts/src/scenes/StoryBook";
+import { GameEngine } from "./engine/GameEngine";
+import { StoryBook } from "./scenes/StoryBook";
+
 
 async function bootstrap() {
   const splashScreen = document.getElementById('splash-screen')
   const loading      = document.getElementById('loading')
   const canvas       = document.getElementById('game-canvas') as HTMLCanvasElement | null
 
-  if (!canvas) { console.error('❌ #game-canvas manquant'); return }
-  if (!loading) { console.error('❌ #loading manquant'); return }
-  if (!splashScreen) { console.error('❌ #splash-screen manquant'); return }
+  if (!canvas) { console.error('#game-canvas manquant'); return }
+  if (!loading) { console.error('#loading manquant'); return }
+  if (!splashScreen) { console.error('#splash-screen manquant'); return }
 
   const enginePromise = (async () => {
     const engine = new GameEngine(canvas)
