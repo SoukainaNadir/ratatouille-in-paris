@@ -1,5 +1,3 @@
-
-
 export class SoundManager {
   private ctx: AudioContext | null = null
   private enabled = false
@@ -32,7 +30,6 @@ export class SoundManager {
     window.addEventListener('touchstart', unlock, { once: true })
   }
 
-
   playMenuMusic(): void {
     if (!this.ctx) {
       this.ctx = new AudioContext()
@@ -64,6 +61,16 @@ export class SoundManager {
     }
   }
 
+  pauseGameMusic(): void {
+    this.gameMusic.pause()
+    this.menuMusic.pause()
+  }
+
+
+  resumeGameMusic(): void {
+    this.gameMusic.play().catch(() => {})
+  }
+
   stopMusic(): void {
     this.fadeOut(this.menuMusic, 500)
     this.fadeOut(this.gameMusic, 500)
@@ -86,7 +93,6 @@ export class SoundManager {
       }
     }, interval)
   }
-
 
   playCatMeow(): void {
     this.catSound.currentTime = 0

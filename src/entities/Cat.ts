@@ -4,6 +4,11 @@ import { PhysicsWorld } from '../engine/PhysicsWorld'
 
 export type CatState = 'patrol' | 'chase' | 'search' | 'celebrate'
 
+export interface CatUpdateResult {
+  caught: boolean
+  spotted: boolean
+}
+
 export class Cat {
   public mesh: THREE.Group
   public body!: CANNON.Body
@@ -19,7 +24,7 @@ export class Cat {
   private detectRange = 7
   private chaseRange  = 12
   private speed       = { patrol: 2.5, chase: 5.5 }
-  private visionAngle = (2 * Math.PI) / 3  
+  private visionAngle = (2 * Math.PI) / 3
 
   private animTime  = 0
   private bodyMesh!: THREE.Mesh
@@ -106,7 +111,7 @@ export class Cat {
     this.physics.linkMeshToBody(this.mesh, this.body)
   }
 
-  update(dt: number, ratPosition: THREE.Vector3): boolean {
+  update(dt: number, ratPosition: THREE.Vector3): CatUpdateResult {
     this.animTime  += dt
     this.alertTimer = Math.max(0, this.alertTimer - dt)
 
@@ -116,6 +121,9 @@ export class Cat {
     const chaseSpd  = this.speed.chase  * this.difficultyMult
     const patrolSpd = this.speed.patrol * Math.min(this.difficultyMult, 1.3)
     const detectR   = this.detectRange  * Math.min(this.difficultyMult, 1.4)
+
+    // Save state BEFORE the switch to detect transitions
+    const prevState = this.state
 
     if (this.alertPos && this.alertTimer > 0 && this.state === 'patrol') {
       this.state = 'chase'
@@ -140,7 +148,8 @@ export class Cat {
         }
         if (distToRat < 0.8) {
           this.showSpeechBubble('😸 ATTRAPPÉ!')
-          return true
+          this.animateCat()
+          return { caught: true, spotted: false }
         }
         break
 
@@ -158,8 +167,11 @@ export class Cat {
         break
     }
 
+    // spotted = true only on the frame the cat transitions INTO chase
+    const spotted = prevState !== 'chase' && this.state === 'chase'
+
     this.animateCat()
-    return false
+    return { caught: false, spotted }
   }
 
   private canSeeRat(ratPos: THREE.Vector3, range: number, angle: number): boolean {
@@ -233,5 +245,21 @@ export class Cat {
     setTimeout(() => {
       if (this.speechBubble) { this.mesh.remove(this.speechBubble); this.speechBubble = null }
     }, 2000)
+  }
+
+
+  resetToPatrol(): void {
+    this.state = 'patrol'
+    this.currentPatrolIndex = 0
+    this.alertPos   = null
+    this.alertTimer = 0
+    this.difficultyMult = 1.0
+    const sp = this.patrolPoints[0]
+    this.body.position.set(sp.x, 1, sp.z)
+    this.body.velocity.set(0, 0, 0)
+    if (this.speechBubble) {
+      this.mesh.remove(this.speechBubble)
+      this.speechBubble = null
+    }
   }
 }
