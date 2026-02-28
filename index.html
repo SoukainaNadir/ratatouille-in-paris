@@ -250,37 +250,62 @@
   </style>
 </head>
 <body>
+<div id="splash-screen" style="
+  position:fixed; inset:0; z-index:300;
+  cursor:pointer; overflow:hidden;
+">
+  <div style="
+    position:absolute; inset:0;
+    background: url('/splash.png') center center / cover no-repeat;
+  "></div>
 
-  <!-- Splash Screen (shown first, before loading) -->
-  <div id="splash-screen" style="
-    position:fixed; inset:0; z-index:300;
-    background: radial-gradient(ellipse at center, #2a1000 0%, #0a0500 100%);
-    display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:20px;
-    cursor:pointer;
+  <div style="
+    position:absolute; bottom:0; left:0; right:0;
+    padding: 40px 20px 45px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.82));
+    text-align:center;
   ">
-    <div style="font-size:6rem; animation: float 2s ease-in-out infinite;">🐀</div>
-    <h1 style="color:#FFD700; font-size:3rem; font-family:Georgia,serif; letter-spacing:3px; text-shadow:0 0 30px rgba(255,215,0,0.5)">
-      Chef en Fuite
-    </h1>
-    <p style="color:rgba(255,200,100,0.7); font-size:1rem; letter-spacing:2px;">
-      Ratatouille: The WebGL Experience
-    </p>
+    <h1 style="
+      font-size:2.8rem; font-family:Georgia,serif; letter-spacing:4px;
+      color:#f5deb3; text-shadow:0 2px 16px rgba(0,0,0,1);
+      margin-bottom:6px;
+    ">Chef en Fuite</h1>
+
+    <p style="
+      color:rgba(220,190,140,0.85); font-size:0.9rem;
+      letter-spacing:1px; font-style:italic;
+      text-shadow:0 2px 8px rgba(0,0,0,1);
+      margin-bottom:6px;
+    ">Paris, 2026 — Rémi a volé les ingrédients secrets du grand chef.</p>
+
+    <p style="
+      color:rgba(200,170,120,0.75); font-size:0.85rem;
+      text-shadow:0 2px 8px rgba(0,0,0,1);
+      margin-bottom:22px;
+    ">Collecte les 5 ingrédients avant que les chats ne t'attrapent...</p>
+
     <div style="
-      margin-top:30px;
-      padding: 18px 60px;
-      background: linear-gradient(135deg, #FFD700, #FF8C00);
-      color: #1a0a00; border:none; border-radius:50px;
-      font-size:1.4rem; font-weight:bold; letter-spacing:3px;
-      box-shadow: 0 4px 30px rgba(255,165,0,0.6);
-      animation: pulse 1.5s ease-in-out infinite;
+      display:inline-block;
+      padding: 13px 48px;
+      border: 1.5px solid rgba(245,222,179,0.6);
+      border-radius:50px;
+      font-size:1.1rem; font-weight:bold; letter-spacing:3px;
+      color:#f5deb3;
+      text-shadow:0 2px 8px rgba(0,0,0,1);
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(4px);
+      animation: pulse 2s ease-in-out infinite;
     ">
-      🎵 CLIQUER POUR JOUER
+      CLIQUER POUR JOUER
     </div>
-    <p style="color:rgba(255,200,100,0.4); font-size:0.75rem; margin-top:10px;">
-      Cliquez n'importe où pour commencer
+
+    <p style="color:rgba(200,170,120,0.4); font-size:0.7rem; margin-top:10px; letter-spacing:1px;">
+      WASD / ↑↓←→ pour bouger
     </p>
   </div>
+</div>
+
+  
 
   <style>
     @keyframes float {
@@ -314,16 +339,13 @@
     <div class="controls-hint">WASD / ↑↓←→ pour bouger • ESPACE pour sauter</div>
   </div>
 
-  <!-- Game Canvas -->
   <canvas id="game-canvas"></canvas>
 
-  <!-- Red flash on damage -->
   <div id="damage-overlay" style="position:fixed;inset:0;pointer-events:none;background:rgba(255,0,0,0.5);opacity:0;z-index:5;"></div>
 
-  <!-- Sound toggle -->
+
   <button id="sound-btn" onclick="window._soundToggle && window._soundToggle()" style="position:fixed;bottom:20px;left:20px;background:rgba(0,0,0,0.5);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:50%;width:44px;height:44px;font-size:1.3rem;cursor:pointer;z-index:20;">🔊</button>
 
-  <!-- HUD -->
   <div id="hud">
     <div id="lives">🐀🐀🐀</div>
     <div id="timer">3:00</div>
@@ -339,21 +361,19 @@
     <div id="minimap"><canvas id="minimap-canvas" width="120" height="120"></canvas></div>
   </div>
 
-  <!-- Win Screen -->
   <div id="win-screen">
     <div style="font-size:5rem">🏆</div>
     <h2>MAGNIFIQUE !</h2>
     <p style="color:rgba(255,255,255,0.7);font-size:1.1rem">La recette légendaire est prête !</p>
     <p style="color:#FFD700;margin-top:10px;font-size:1.3rem">Score: <span id="final-score">0</span></p>
-    <button class="end-btn" onclick="location.reload()">🔄 Rejouer</button>
+    <button class="end-btn" onclick="location.reload()">Rejouer</button>
   </div>
 
-  <!-- Lose Screen -->
   <div id="lose-screen">
     <div style="font-size:5rem">😿</div>
     <h2>MON DIEU !</h2>
     <p style="color:rgba(255,255,255,0.7);font-size:1.1rem">Le temps est écoulé... ou tu as été attrapé !</p>
-    <button class="end-btn" onclick="location.reload()">🔄 Réessayer</button>
+    <button class="end-btn" onclick="location.reload()">Réessayer</button>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

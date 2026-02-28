@@ -1,56 +1,48 @@
 
-interface Page {
-  emoji: string
+interface Slide {
+  image: string
   title: string
-  text: string
+  subtitle: string
+  align: 'top' | 'bottom'
 }
 
-const PAGES: Page[] = [
+const SLIDES: Slide[] = [
   {
-    emoji: '🐀',
-    title: 'Il était une fois...',
-    text: 'Dans les égouts de Paris vivait Rémi, un rat pas comme les autres. Pendant que ses frères fouillaient les poubelles, lui rêvait de haute cuisine...'
+    image: '/story1.png',
+    title: 'Le restaurant de Gusteau ferme ce soir à minuit.',
+    subtitle: 'Des années de gloire... sur le point de s\'éteindre pour toujours.',
+    align: 'bottom'
   },
   {
-    emoji: '👨‍🍳',
-    title: 'Le Grand Rêve',
-    text: 'Rémi adorait le grand chef Gusteau et sa devise : "Tout le monde peut cuisiner !". Chaque nuit, il s\'entraînait en secret sur des restes trouvés dans la ville lumière...'
+    image: '/story2.png',
+    title: 'La Ratatouille Impériale — la seule recette qui peut le sauver.',
+    subtitle: '5 ingrédients légendaires, éparpillés aux quatre coins de Paris.',
+    align: 'bottom'
   },
   {
-    emoji: '🏙️',
-    title: 'Paris by Night',
-    text: 'Un soir, une tempête sépara Rémi de sa famille. Il se retrouva seul sous les toits du célèbre restaurant "Chez Gusteau", au cœur de Paris...'
+    image: '/story3.png',
+    title: 'Quelqu\'un doit les récupérer.',
+    subtitle: 'Tu connais ces toits comme ta poche. C\'est l\'heure de prouver ton talent.',
+    align: 'bottom'
   },
   {
-    emoji: '🍽️',
-    title: 'La Mission',
-    text: 'Pour prouver son talent, Rémi doit préparer la recette légendaire de Gusteau. Mais les 5 ingrédients sont éparpillés aux quatre coins de Paris !'
+    image: '/story4.png',
+    title: 'Mais Skinner a lâché ses chats dans toute la ville.',
+    subtitle: 'Ils patrouillent. Ils traquent. Un seul contact — et c\'est terminé.',
+    align: 'top'
   },
   {
-    emoji: '😾',
-    title: 'Le Danger',
-    text: 'Les chats du quartier et les inspecteurs sanitaires font leur ronde. Un seul faux pas et c\'en est fini du rêve de Rémi ! Sauras-tu l\'aider ?'
-  },
-  {
-    emoji: '🎮',
-    title: 'À Toi de Jouer !',
-    text: 'Collecte les 5 ingrédients légendaires cachés dans les rues de Paris. Évite les chats. Tu as 3 minutes. Bonne chance, Chef !'
+    image: '/story5.png',
+    title: '3 minutes. C\'est tout ce qu\'il te reste.',
+    subtitle: 'C\'est maintenant ou jamais, Chef.',
+    align: 'bottom'
   }
-]
-
-const RIGHT_PANELS = [
-  { art: '🗼\n🏛️🏠🏰\n🌉🌙⭐', caption: 'Paris, la Ville Lumière' },
-  { art: '🍲\n🔥🧑‍🍳✨\n📖⭐🌟', caption: '"Tout le monde peut cuisiner"' },
-  { art: '🌧️\n🏠🐀🏠\n💨🌃🌙', caption: 'Perdu dans la nuit parisienne' },
-  { art: '🧀 🍅\n🧈 🌿\n    🍄', caption: 'Les 5 ingrédients légendaires' },
-  { art: '😾🚨\n🐀💨\n🏃‍♂️⚡', caption: 'Attention aux gardes !' },
-  { art: '🎮\n⌨️🖱️\n🏆✨', caption: 'WASD · ESPACE pour sauter' }
 ]
 
 export class StoryBook {
   private container: HTMLElement
-  private currentPage = 0
-  private isFlipping = false
+  private current = 0
+  private transitioning = false
   private onComplete: () => void
 
   constructor(onComplete: () => void) {
@@ -60,316 +52,256 @@ export class StoryBook {
     this.injectStyles()
     document.body.appendChild(this.container)
     this.render()
+    this.bindKeys()
   }
 
   private injectStyles(): void {
-    if (document.getElementById('storybook-styles')) return
-    const style = document.createElement('style')
-    style.id = 'storybook-styles'
-    style.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Crimson+Text:ital@0;1&display=swap');
+    if (document.getElementById('sb-styles')) return
+    const s = document.createElement('style')
+    s.id = 'sb-styles'
+    s.textContent = `
+      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&display=swap');
 
       #storybook {
         position: fixed; inset: 0; z-index: 500;
-        display: flex; align-items: center; justify-content: center;
-        background: radial-gradient(ellipse at center, #1a0800 0%, #050200 100%);
-        font-family: 'Crimson Text', Georgia, serif;
-        transition: opacity 0.8s;
-      }
-
-      .sb-wrapper {
-        position: relative;
-        width: min(740px, 92vw);
-      }
-
-      .sb-skip {
-        position: absolute; top: -44px; right: 0;
-        background: none; border: none;
-        color: rgba(255,215,0,0.35); font-size: 0.8rem;
-        cursor: pointer; letter-spacing: 2px;
-        font-family: 'Crimson Text', serif;
-        transition: color 0.3s;
-      }
-      .sb-skip:hover { color: rgba(255,215,0,0.8); }
-
-      .sb-book {
-        display: flex;
-        height: min(440px, 72vh);
-        border-radius: 4px;
-        overflow: hidden;
-        box-shadow:
-          0 30px 60px rgba(0,0,0,0.8),
-          0 0 0 1px rgba(255,215,0,0.1),
-          inset 0 0 60px rgba(0,0,0,0.3);
-        position: relative;
-      }
-
-      /* Spine */
-      .sb-spine {
-        width: 24px; flex-shrink: 0;
-        background: linear-gradient(to right, #2a1508, #5a3018, #2a1508);
-        border-left: 1px solid rgba(255,215,0,0.2);
-        border-right: 1px solid rgba(255,215,0,0.2);
-        z-index: 2;
-        box-shadow: 2px 0 10px rgba(0,0,0,0.4), -2px 0 10px rgba(0,0,0,0.4);
-      }
-
-      /* Pages */
-      .sb-page {
-        flex: 1;
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        padding: 28px 22px;
-        box-sizing: border-box;
-        position: relative;
+        background: #000;
+        font-family: 'Playfair Display', Georgia, serif;
         cursor: pointer;
-        background: linear-gradient(160deg, #1a0d02 0%, #0d0700 100%);
-        overflow: hidden;
-        transition: background 0.5s;
+        user-select: none;
       }
 
-      /* Paper lines texture */
-      .sb-page::before {
-        content: '';
+      .sb-slide {
         position: absolute; inset: 0;
-        background: repeating-linear-gradient(
-          transparent, transparent 30px,
-          rgba(255,215,0,0.03) 30px, rgba(255,215,0,0.03) 31px
+        opacity: 0;
+        transition: opacity 0.9s ease;
+      }
+      .sb-slide.active  { opacity: 1; }
+      .sb-slide.leaving { opacity: 0; }
+
+      .sb-img {
+        position: absolute; inset: 0;
+        background-size: cover;
+        background-position: center;
+        animation: sbKenBurns 9s ease-out forwards;
+      }
+      @keyframes sbKenBurns {
+        from { transform: scale(1);    filter: brightness(0.45); }
+        to   { transform: scale(1.07); filter: brightness(0.72); }
+      }
+
+      .sb-grad-bottom {
+        position: absolute; inset: 0;
+        background: linear-gradient(
+          to top,
+          rgba(0,0,0,0.95) 0%,
+          rgba(0,0,0,0.45) 38%,
+          transparent      62%
         );
-        pointer-events: none;
+      }
+      .sb-grad-top {
+        position: absolute; inset: 0;
+        background: linear-gradient(
+          to bottom,
+          rgba(0,0,0,0.95) 0%,
+          rgba(0,0,0,0.45) 38%,
+          transparent      62%
+        );
       }
 
-      /* Corner decoration */
-      .sb-page::after {
-        content: '❧';
-        position: absolute; bottom: 14px; right: 18px;
-        color: rgba(255,215,0,0.15); font-size: 1.4rem;
-        pointer-events: none;
+      .sb-text-bottom {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        padding: 70px 12% 55px;
+        text-align: center;
+        animation: sbFadeUp 1.3s 0.4s ease both;
       }
-
-      .sb-page-left { border-right: 1px solid rgba(255,215,0,0.08); }
-      .sb-page-right { border-left: 1px solid rgba(255,215,0,0.08); }
-      .sb-page-right::after { right: auto; left: 18px; content: '❦'; }
-
-      .sb-page-num {
-        position: absolute; top: 14px;
-        font-size: 0.65rem; color: rgba(255,215,0,0.25);
-        letter-spacing: 3px; text-transform: uppercase;
+      .sb-text-top {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        padding: 55px 12% 70px;
+        text-align: center;
+        animation: sbFadeDown 1.3s 0.4s ease both;
       }
-
-      .sb-emoji {
-        font-size: clamp(2.8rem, 7vw, 4.5rem);
-        margin-bottom: 14px;
-        animation: sbFloat 3s ease-in-out infinite;
-        filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6));
+      @keyframes sbFadeUp {
+        from { opacity: 0; transform: translateY(28px); }
+        to   { opacity: 1; transform: translateY(0); }
       }
-      @keyframes sbFloat {
-        0%,100% { transform: translateY(0) rotate(-1deg); }
-        50%      { transform: translateY(-10px) rotate(1deg); }
+      @keyframes sbFadeDown {
+        from { opacity: 0; transform: translateY(-28px); }
+        to   { opacity: 1; transform: translateY(0); }
       }
 
       .sb-title {
-        font-family: 'Playfair Display', serif;
-        font-size: clamp(1rem, 2.8vw, 1.4rem);
+        font-size: clamp(1.2rem, 2.8vw, 1.9rem);
         font-weight: 700;
-        color: #FFD700;
-        text-align: center;
-        margin-bottom: 12px;
-        text-shadow: 0 0 20px rgba(255,215,0,0.3);
-        line-height: 1.2;
-      }
-
-      .sb-divider {
-        width: 50px; height: 1px;
-        background: linear-gradient(to right, transparent, rgba(255,215,0,0.4), transparent);
-        margin: 0 auto 12px;
-      }
-
-      .sb-text {
-        font-size: clamp(0.82rem, 1.8vw, 0.97rem);
-        color: rgba(255,220,160,0.82);
-        text-align: center; line-height: 1.85;
-        font-style: italic; max-width: 270px;
-      }
-
-      /* Right illustration panel */
-      .sb-art {
-        font-size: clamp(1.6rem, 4vw, 2.4rem);
-        line-height: 2; text-align: center;
+        color: #fff;
+        text-shadow: 0 2px 24px rgba(0,0,0,1), 0 0 60px rgba(0,0,0,0.9);
+        line-height: 1.45;
         margin-bottom: 14px;
-        white-space: pre;
+        font-style: italic;
       }
 
-      .sb-caption {
-        color: rgba(255,215,0,0.35);
-        font-size: 0.72rem; letter-spacing: 1.5px;
-        text-align: center; font-style: italic;
+      .sb-subtitle {
+        font-size: clamp(0.82rem, 1.6vw, 1rem);
+        color: rgba(255, 215, 160, 0.8);
+        text-shadow: 0 2px 14px rgba(0,0,0,1);
+        font-weight: 400;
+        font-style: italic;
+        line-height: 1.65;
       }
 
-      /* Flip hint */
-      .sb-hint {
-        position: absolute; bottom: 18px; left: 50%;
-        transform: translateX(-50%);
-        color: rgba(255,215,0,0.22);
-        font-size: 0.68rem; letter-spacing: 2px;
-        animation: sbBlink 2s ease-in-out infinite;
-        white-space: nowrap;
-      }
-      @keyframes sbBlink {
-        0%,100% { opacity: 0.3; } 50% { opacity: 0.9; }
-      }
-
-      /* Page flip animation */
-      @keyframes sbFlipOut {
-        0%   { opacity: 1; transform: rotateY(0deg) scaleX(1); }
-        50%  { opacity: 0.3; transform: rotateY(-20deg) scaleX(0.85); }
-        100% { opacity: 0; transform: rotateY(-30deg) scaleX(0.7); }
-      }
-      @keyframes sbFlipIn {
-        0%   { opacity: 0; transform: rotateY(30deg) scaleX(0.7); }
-        50%  { opacity: 0.3; transform: rotateY(20deg) scaleX(0.85); }
-        100% { opacity: 1; transform: rotateY(0deg) scaleX(1); }
-      }
-      .sb-page.flip-out { animation: sbFlipOut 0.35s ease-in forwards; }
-      .sb-page.flip-in  { animation: sbFlipIn  0.35s ease-out forwards; }
-
-      /* Navigation */
-      .sb-nav {
-        display: flex; align-items: center;
-        justify-content: center; gap: 18px;
+      .sb-play {
+        display: inline-block;
         margin-top: 28px;
-      }
-
-      .sb-btn {
-        background: rgba(255,215,0,0.08);
-        border: 1px solid rgba(255,215,0,0.25);
-        color: #FFD700; padding: 10px 22px;
-        border-radius: 30px;
+        padding: 15px 48px;
+        background: rgba(160,100,20,0.75);
+        border: 1.5px solid rgba(255,200,80,0.5);
+        color: #fff8e8;
         font-family: 'Playfair Display', serif;
-        font-size: 0.88rem; cursor: pointer;
-        transition: all 0.25s; letter-spacing: 1px;
-      }
-      .sb-btn:hover:not(:disabled) {
-        background: rgba(255,215,0,0.18);
-        border-color: rgba(255,215,0,0.5);
-        transform: scale(1.04);
-      }
-      .sb-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-
-      .sb-btn.play {
-        background: linear-gradient(135deg, #FFD700, #FF8C00);
-        color: #1a0800; font-weight: bold; border: none;
-        padding: 12px 32px; font-size: 0.95rem;
-        box-shadow: 0 4px 20px rgba(255,165,0,0.45);
-        animation: sbPulse 1.5s ease-in-out infinite;
+        font-size: 1rem; font-weight: 700;
+        letter-spacing: 3px; border-radius: 50px;
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+        animation: sbPulse 2s ease-in-out infinite;
+        white-space: nowrap;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        box-shadow: 0 6px 25px rgba(0,0,0,0.5);
       }
       @keyframes sbPulse {
-        0%,100% { box-shadow: 0 4px 20px rgba(255,165,0,0.4); }
-        50%      { box-shadow: 0 4px 35px rgba(255,165,0,0.8); }
+        0%,100% { box-shadow: 0 6px 25px rgba(0,0,0,0.5); }
+        50%      { box-shadow: 0 6px 35px rgba(0,0,0,0.6), 0 0 25px rgba(180,120,30,0.35); }
       }
 
-      .sb-dots {
-        display: flex; gap: 7px; align-items: center;
+      .sb-ui {
+        position: absolute;
+        bottom: 22px; left: 50%; transform: translateX(-50%);
+        display: flex; align-items: center; gap: 10px;
+        z-index: 10;
       }
+
       .sb-dot {
-        width: 6px; height: 6px; border-radius: 50%;
-        background: rgba(255,215,0,0.18);
-        transition: all 0.3s;
+        width: 7px; height: 7px; border-radius: 50%;
+        background: rgba(255,255,255,0.25);
+        transition: all 0.4s; cursor: pointer;
       }
       .sb-dot.on {
-        background: #FFD700; transform: scale(1.5);
-        box-shadow: 0 0 8px rgba(255,215,0,0.6);
+        background: rgba(255,255,255,0.9);
+        transform: scale(1.5);
+      }
+
+      .sb-skip {
+        position: absolute; top: 22px; right: 24px;
+        background: rgba(0,0,0,0.35);
+        border: 1px solid rgba(255,255,255,0.18);
+        color: rgba(255,255,255,0.45);
+        font-size: 0.72rem; letter-spacing: 2px;
+        padding: 7px 16px; border-radius: 20px;
+        cursor: pointer; z-index: 20;
+        font-family: 'Playfair Display', serif;
+        transition: all 0.3s;
+        backdrop-filter: blur(4px);
+      }
+      .sb-skip:hover { color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.4); }
+
+      .sb-hint {
+        position: absolute; bottom: 56px; right: 28px;
+        color: rgba(255,255,255,0.28);
+        font-size: 0.68rem; letter-spacing: 2px;
+        animation: sbBlink 2.2s ease-in-out infinite;
+        z-index: 10; pointer-events: none;
+      }
+      @keyframes sbBlink {
+        0%,100% { opacity: 0.25; } 50% { opacity: 0.75; }
+      }
+
+      .sb-counter {
+        position: absolute; top: 26px; left: 24px;
+        color: rgba(255,255,255,0.3);
+        font-size: 0.72rem; letter-spacing: 3px;
+        z-index: 20;
       }
     `
-    document.head.appendChild(style)
+    document.head.appendChild(s)
   }
 
   private render(): void {
-    const p = PAGES[this.currentPage]
-    const r = RIGHT_PANELS[this.currentPage]
-    const isLast = this.currentPage === PAGES.length - 1
+    const slide = SLIDES[this.current]
+    const isLast = this.current === SLIDES.length - 1
 
     this.container.innerHTML = `
-      <div class="sb-wrapper">
-        <button class="sb-skip" id="sb-skip">PASSER L'HISTOIRE ›</button>
+      <button class="sb-skip" id="sb-skip">PASSER ›</button>
+      <div class="sb-counter">${this.current + 1} / ${SLIDES.length}</div>
 
-        <div class="sb-book">
-          <!-- Left: story -->
-          <div class="sb-page sb-page-left" id="sb-left">
-            <span class="sb-page-num">— ${this.currentPage + 1} / ${PAGES.length} —</span>
-            <div class="sb-emoji">${p.emoji}</div>
-            <div class="sb-title">${p.title}</div>
-            <div class="sb-divider"></div>
-            <div class="sb-text">${p.text}</div>
-            ${!isLast ? '<div class="sb-hint">cliquer → page suivante</div>' : ''}
-          </div>
-
-          <!-- Spine -->
-          <div class="sb-spine"></div>
-
-          <!-- Right: illustration -->
-          <div class="sb-page sb-page-right" id="sb-right">
-            <span class="sb-page-num"></span>
-            <div class="sb-art">${r.art}</div>
-            <div class="sb-divider"></div>
-            <div class="sb-caption">${r.caption}</div>
-          </div>
+      <div class="sb-slide active" id="sb-slide">
+        <div class="sb-img" style="background-image:url('${slide.image}')"></div>
+        <div class="${slide.align === 'bottom' ? 'sb-grad-bottom' : 'sb-grad-top'}"></div>
+        <div class="${slide.align === 'bottom' ? 'sb-text-bottom' : 'sb-text-top'}">
+          <div class="sb-title">${slide.title}</div>
+          <div class="sb-subtitle">${slide.subtitle}</div>
+          ${isLast ? `<br><button class="sb-play" id="sb-play">🎮 COMMENCER L'AVENTURE</button>` : ''}
         </div>
+      </div>
 
-        <div class="sb-nav">
-          <button class="sb-btn" id="sb-prev" ${this.currentPage === 0 ? 'disabled' : ''}>← Précédent</button>
-          <div class="sb-dots">
-            ${PAGES.map((_, i) => `<div class="sb-dot ${i === this.currentPage ? 'on' : ''}"></div>`).join('')}
-          </div>
-          <button class="sb-btn ${isLast ? 'play' : ''}" id="sb-next">
-            ${isLast ? '🎮 JOUER !' : 'Suivant →'}
-          </button>
-        </div>
+      ${!isLast ? `<div class="sb-hint">cliquer pour continuer →</div>` : ''}
+
+      <div class="sb-ui">
+        ${SLIDES.map((_, i) =>
+          `<div class="sb-dot ${i === this.current ? 'on' : ''}" data-i="${i}"></div>`
+        ).join('')}
       </div>
     `
 
-    document.getElementById('sb-next')?.addEventListener('click', () => {
-      isLast ? this.close() : this.goTo(this.currentPage + 1)
+    document.getElementById('sb-skip')?.addEventListener('click', e => {
+      e.stopPropagation(); this.close()
     })
-    document.getElementById('sb-prev')?.addEventListener('click', () => {
-      if (this.currentPage > 0) this.goTo(this.currentPage - 1)
+    document.getElementById('sb-play')?.addEventListener('click', e => {
+      e.stopPropagation(); this.close()
     })
-    document.getElementById('sb-skip')?.addEventListener('click', () => this.close())
-
-    // Click right page = next
-    document.getElementById('sb-right')?.addEventListener('click', () => {
-      if (!isLast) this.goTo(this.currentPage + 1)
+    this.container.querySelectorAll('.sb-dot').forEach(dot => {
+      dot.addEventListener('click', e => {
+        e.stopPropagation()
+        const i = parseInt((dot as HTMLElement).dataset.i ?? '0')
+        if (i !== this.current) this.goTo(i)
+      })
     })
-    // Click left page = prev
-    document.getElementById('sb-left')?.addEventListener('click', () => {
-      if (this.currentPage > 0) this.goTo(this.currentPage - 1)
+    this.container.addEventListener('click', () => {
+      if (!this.transitioning) isLast ? this.close() : this.goTo(this.current + 1)
     })
   }
 
   private goTo(index: number): void {
-    if (this.isFlipping) return
-    this.isFlipping = true
-    const forward = index > this.currentPage
+    if (this.transitioning) return
+    this.transitioning = true
 
-    const el = document.getElementById(forward ? 'sb-left' : 'sb-right')
-    el?.classList.add('flip-out')
+    const oldSlide = document.getElementById('sb-slide')
+    oldSlide?.classList.remove('active')
+    oldSlide?.classList.add('leaving')
 
     setTimeout(() => {
-      this.currentPage = index
-      this.isFlipping = false
+      this.current = index
+      this.transitioning = false
       this.render()
-      // Animate in
-      const newEl = document.getElementById(forward ? 'sb-left' : 'sb-right')
-      newEl?.classList.add('flip-in')
-      setTimeout(() => newEl?.classList.remove('flip-in'), 350)
-    }, 350)
+    }, 600)
+  }
+
+  private bindKeys(): void {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault()
+        this.current < SLIDES.length - 1 ? this.goTo(this.current + 1) : this.close()
+      }
+      if (e.key === 'ArrowLeft' && this.current > 0) this.goTo(this.current - 1)
+      if (e.key === 'Escape') this.close()
+    }
+    window.addEventListener('keydown', handler)
   }
 
   private close(): void {
+    this.container.style.transition = 'opacity 1s'
     this.container.style.opacity = '0'
     setTimeout(() => {
       this.container.remove()
       this.onComplete()
-    }, 800)
+    }, 1000)
   }
 }
