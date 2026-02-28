@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { PhysicsWorld } from '../engine/PhysicsWorld'
+import { SoundManager } from '../engine/SoundManager'
 
 export type CatState = 'patrol' | 'chase' | 'search' | 'celebrate'
 
@@ -17,6 +18,7 @@ export class Cat {
   private alertTimer = 0
 
   private physics: PhysicsWorld
+  private sound: SoundManager
   private patrolPoints: THREE.Vector3[]
   private currentPatrolIndex = 0
   private state: CatState = 'patrol'
@@ -32,10 +34,20 @@ export class Cat {
   private headMesh!: THREE.Mesh
   private speechBubble: THREE.Sprite | null = null
 
-  constructor(physics: PhysicsWorld, patrolPoints: THREE.Vector3[]) {
+  private meowAudio: THREE.PositionalAudio
+  private meowCooldown = 0
+  private readonly MEOW_INTERVAL = 4.0 
+
+  constructor(physics: PhysicsWorld, patrolPoints: THREE.Vector3[], sound: SoundManager) {
     this.physics      = physics
     this.patrolPoints = patrolPoints
+    this.sound        = sound
     this.mesh         = new THREE.Group()
+
+
+    this.meowAudio = this.sound.createCatPositionalAudio(4, 18)
+    this.mesh.add(this.meowAudio) 
+
     this.buildMesh()
     this.buildPhysics()
   }
@@ -112,8 +124,9 @@ export class Cat {
   }
 
   update(dt: number, ratPosition: THREE.Vector3): CatUpdateResult {
-    this.animTime  += dt
-    this.alertTimer = Math.max(0, this.alertTimer - dt)
+    this.animTime   += dt
+    this.alertTimer  = Math.max(0, this.alertTimer - dt)
+    this.meowCooldown = Math.max(0, this.meowCooldown - dt)
 
     const myPos     = this.mesh.position.clone()
     const distToRat = myPos.distanceTo(ratPosition)
@@ -122,7 +135,6 @@ export class Cat {
     const patrolSpd = this.speed.patrol * Math.min(this.difficultyMult, 1.3)
     const detectR   = this.detectRange  * Math.min(this.difficultyMult, 1.4)
 
-    // Save state BEFORE the switch to detect transitions
     const prevState = this.state
 
     if (this.alertPos && this.alertTimer > 0 && this.state === 'patrol') {
@@ -141,6 +153,12 @@ export class Cat {
 
       case 'chase':
         this.chaseRat(ratPosition, chaseSpd)
+
+        if (this.meowCooldown <= 0) {
+          this.sound.playCatMeowSpatial(this.meowAudio)
+          this.meowCooldown = this.MEOW_INTERVAL + Math.random() * 2
+        }
+
         if (distToRat > this.chaseRange * this.difficultyMult) {
           this.state = 'search'
           this.showSpeechBubble('🙀 OÙ EST-IL?!')
@@ -167,8 +185,12 @@ export class Cat {
         break
     }
 
-    // spotted = true only on the frame the cat transitions INTO chase
     const spotted = prevState !== 'chase' && this.state === 'chase'
+
+    if (spotted) {
+      this.sound.playCatMeowSpatial(this.meowAudio)
+      this.meowCooldown = this.MEOW_INTERVAL
+    }
 
     this.animateCat()
     return { caught: false, spotted }
@@ -216,6 +238,29 @@ export class Cat {
   getPosition(): THREE.Vector3 { return this.mesh.position.clone() }
   isChasing():   boolean       { return this.state === 'chase' }
 
+  resetToPatrol(): void {
+    this.state               = 'patrol'
+    this.currentPatrolIndex  = 0
+    this.alertPos            = null
+    this.alertTimer          = 0
+    this.meowCooldown        = 0
+
+    if (this.meowAudio.isPlaying) this.meowAudio.stop()
+
+    if (this.speechBubble) {
+      this.mesh.remove(this.speechBubble)
+      this.speechBubble.material.map?.dispose()
+      this.speechBubble.material.dispose()
+      this.speechBubble = null
+    }
+
+    const sp = this.patrolPoints[0]
+    this.body.position.set(sp.x, 1, sp.z)
+    this.body.velocity.set(0, 0, 0)
+    this.mesh.position.copy(sp)
+    this.mesh.position.y = 0.35
+  }
+
   private animateCat(): void {
     const isMoving = this.state === 'patrol' || this.state === 'chase'
     this.tailMesh.rotation.y = this.state === 'chase'
@@ -225,41 +270,48 @@ export class Cat {
       this.bodyMesh.position.y = Math.sin(this.animTime * 8) * 0.04
       this.headMesh.position.y = 0.1 + Math.sin(this.animTime * 8) * 0.03
     }
-    this.headMesh.scale.setScalar(this.state === 'chase' ? 1.08 : 1.0)
+    this.headMesh.scale.setScalar(this.state === 'chase' ? 1.15 : 1.0)
   }
 
   private showSpeechBubble(text: string): void {
-    if (this.speechBubble) { this.mesh.remove(this.speechBubble); this.speechBubble = null }
-    const canvas = document.createElement('canvas')
-    canvas.width = 256; canvas.height = 80
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'
-    ctx.roundRect(10, 10, 236, 60, 15); ctx.fill()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 22px Arial'
-    ctx.textAlign = 'center'; ctx.fillText(text, 128, 47)
-    const tex = new THREE.CanvasTexture(canvas)
-    this.speechBubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }))
-    this.speechBubble.position.set(0, 1.2, 0)
-    this.speechBubble.scale.set(2, 0.6, 1)
-    this.mesh.add(this.speechBubble)
-    setTimeout(() => {
-      if (this.speechBubble) { this.mesh.remove(this.speechBubble); this.speechBubble = null }
-    }, 2000)
-  }
-
-
-  resetToPatrol(): void {
-    this.state = 'patrol'
-    this.currentPatrolIndex = 0
-    this.alertPos   = null
-    this.alertTimer = 0
-    this.difficultyMult = 1.0
-    const sp = this.patrolPoints[0]
-    this.body.position.set(sp.x, 1, sp.z)
-    this.body.velocity.set(0, 0, 0)
     if (this.speechBubble) {
       this.mesh.remove(this.speechBubble)
+      this.speechBubble.material.map?.dispose()
+      this.speechBubble.material.dispose()
       this.speechBubble = null
     }
+
+    const canvas  = document.createElement('canvas')
+    canvas.width  = 256
+    canvas.height = 64
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle   = 'rgba(255,255,255,0.9)'
+    ctx.strokeStyle = '#333'
+    ctx.lineWidth   = 3
+    ctx.beginPath()
+    ctx.roundRect(4, 4, 248, 56, 12)
+    ctx.fill()
+    ctx.stroke()
+    ctx.fillStyle  = '#222'
+    ctx.font       = '20px Arial'
+    ctx.textAlign  = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, 128, 32)
+
+    const texture = new THREE.CanvasTexture(canvas)
+    const mat     = new THREE.SpriteMaterial({ map: texture, transparent: true })
+    this.speechBubble = new THREE.Sprite(mat)
+    this.speechBubble.position.set(0, 1.2, 0)
+    this.speechBubble.scale.set(2.5, 0.6, 1)
+    this.mesh.add(this.speechBubble)
+
+    setTimeout(() => {
+      if (this.speechBubble) {
+        this.mesh.remove(this.speechBubble)
+        this.speechBubble.material.map?.dispose()
+        this.speechBubble.material.dispose()
+        this.speechBubble = null
+      }
+    }, 2500)
   }
 }

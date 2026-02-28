@@ -5,8 +5,8 @@ import { Rat } from '../entities/Rat'
 import { Cat } from '../entities/Cat'
 import { Ingredient, INGREDIENTS_DATA } from '../entities/Ingredient'
 import { ParisMap } from '../map/ParisMap'
-import { HUD } from '../../../three_vite_ts/ui/HUD'
 import { SoundManager } from './SoundManager'
+import { HUD } from '../../ui/HUD'
 
 export class GameEngine {
   private renderer: THREE.WebGLRenderer
@@ -62,6 +62,8 @@ export class GameEngine {
     this.setupEventListeners()
   }
 
+  // ===== LIGHTING =====
+
   private setupLighting(): void {
     this.scene.add(new THREE.AmbientLight(0xffd0a0, 0.6))
 
@@ -86,6 +88,8 @@ export class GameEngine {
     this.scene.add(new THREE.HemisphereLight(0xff9933, 0x223311, 0.4))
   }
 
+  // ===== EVENT LISTENERS =====
+
   private setupEventListeners(): void {
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight
@@ -95,7 +99,11 @@ export class GameEngine {
 
     const canvas = this.renderer.domElement
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) { this.isDragging = true; this.lastMouseX = e.clientX; this.lastMouseY = e.clientY }
+      if (e.button === 2) {
+        this.isDragging = true
+        this.lastMouseX = e.clientX
+        this.lastMouseY = e.clientY
+      }
     })
     window.addEventListener('mousemove', (e) => {
       if (this.isDragging) {
@@ -119,23 +127,34 @@ export class GameEngine {
       }
     })
 
-    // Pause button in HUD
+    // HUD buttons
     document.getElementById('pause-btn')?.addEventListener('click', () => {
       if (this.gameState === 'playing') this.pause()
       else if (this.gameState === 'paused') this.resume()
     })
     document.getElementById('restart-session-btn')?.addEventListener('click', () => this.restartSession())
-
-    // Resume button inside pause screen
     document.getElementById('resume-btn')?.addEventListener('click', () => this.resume())
     document.getElementById('lose-retry-btn')?.addEventListener('click', () => this.restartSession())
-
-    // Quit button inside pause screen
     document.getElementById('quit-btn')?.addEventListener('click', () => this.quit())
+
+    // Sound toggle (exposed globally for the HTML button)
+    ;(window as any)._soundToggle = () => {
+      this.sound?.toggle()
+      const btn = document.getElementById('sound-btn')
+      if (btn) btn.textContent = this.sound?.isEnabled() ? '🔊' : '🔇'
+    }
   }
+
+  // ===== INIT =====
 
   async init(): Promise<void> {
     this.sound = new SoundManager()
+
+    // ── 🔊 SPATIAL AUDIO: attach AudioListener to camera ──────────────────
+    // This makes the camera the "ears" of the player.
+    // All THREE.PositionalAudio objects in the scene will be heard
+    // relative to this listener's position and orientation.
+    this.camera.add(this.sound.listener)
 
     this.map = new ParisMap(this.scene, this.physics)
     this.map.build()
@@ -151,14 +170,14 @@ export class GameEngine {
       this.scene.add(ing.mesh)
     }
 
-    // Patrol cats — 3 from map routes
+    // Patrol cats — pass `this.sound` so each cat can create its own PositionalAudio
     for (const route of this.map.getCatPatrolRoutes()) {
-      const cat = new Cat(this.physics, route)
+      const cat = new Cat(this.physics, route, this.sound)
       this.cats.push(cat)
       this.scene.add(cat.mesh)
     }
 
-    // Ambush cats — pace a small loop near each archway
+    // Ambush cats — small loop near archways
     for (const pos of this.map.getAmbushPositions()) {
       const r    = 0.9
       const loop = [
@@ -167,7 +186,7 @@ export class GameEngine {
         new THREE.Vector3(pos.x - r, 0.5, pos.z),
         new THREE.Vector3(pos.x,     0.5, pos.z - r),
       ]
-      const ambush = new Cat(this.physics, loop)
+      const ambush = new Cat(this.physics, loop, this.sound)
       ambush.difficultyMult = 1.3
       this.cats.push(ambush)
       this.scene.add(ambush.mesh)
@@ -177,7 +196,6 @@ export class GameEngine {
     this.playIntroCameraAnimation()
   }
 
-  // ===== PAUSE / RESUME / QUIT =====
 
   pause(): void {
     if (this.gameState !== 'playing') return
@@ -199,99 +217,81 @@ export class GameEngine {
     pauseBtn.title = 'Pause (ESC)'
   }
 
-quit(): void {
-  document.getElementById('pause-screen')!.style.display = 'none'
-
-  // Reset game state silently
-  this.gameState      = 'intro'
-  this.timeLeft       = this.totalGameTime
-  this.score          = 0
-  this.collectedCount = 0
-  this.difficulty     = 1.0
-
-  this.rat.reset()
-  for (const cat of this.cats)        cat.resetToPatrol()
-  for (let i = 0; i < this.ingredients.length; i++) {
-    this.ingredients[i].resetIngredient()
-    document.getElementById(`slot-${i}`)?.classList.remove('collected')
-  }
-
-  this.hud.updateLives(3)
-  this.hud.updateScore(0)
-  this.hud.updateTimer(this.totalGameTime)
-
-  // Hide pause button
-  const pauseBtn = document.getElementById('pause-btn')!
-  pauseBtn.style.display = 'none'
-  pauseBtn.textContent = '⏸'
-
-  // Stop game music, go back to menu music
-  this.sound.pauseGameMusic()
-  this.sound.playMenuMusic()
-
-  // Show splash screen again
-  const splash = document.getElementById('splash-screen')!
-  splash.style.display = 'block'
-  splash.style.opacity = '0'
-  splash.style.transition = 'opacity 0.5s'
-  requestAnimationFrame(() => {
-    splash.style.opacity = '1'
-  })
-}
-
-  restartSession(): void {
-    // Hide all overlays
+  quit(): void {
     document.getElementById('pause-screen')!.style.display = 'none'
-    document.getElementById('lose-screen')!.style.display = 'none'
-    document.getElementById('win-screen')!.style.display = 'none'
-    document.getElementById('damage-overlay')!.style.opacity = '0'
 
-    // Reset game variables
+    this.gameState      = 'intro'
     this.timeLeft       = this.totalGameTime
     this.score          = 0
     this.collectedCount = 0
     this.difficulty     = 1.0
 
-    // Reset rat
     this.rat.reset()
-
-    // Reset all cats back to patrol at their first patrol point
-    for (const cat of this.cats) {
-      cat.resetToPatrol()
-    }
-
-    // Reset all ingredients
+    for (const cat of this.cats)        cat.resetToPatrol()
     for (let i = 0; i < this.ingredients.length; i++) {
       this.ingredients[i].resetIngredient()
-      // Reset HUD inventory slot
-      const slot = document.getElementById(`slot-${i}`)
-      if (slot) slot.classList.remove('collected')
+      document.getElementById(`slot-${i}`)?.classList.remove('collected')
     }
 
-    // Reset HUD
     this.hud.updateLives(3)
     this.hud.updateScore(0)
     this.hud.updateTimer(this.totalGameTime)
 
-    // Reset pause button
+    const pauseBtn = document.getElementById('pause-btn')!
+    pauseBtn.style.display = 'none'
+    pauseBtn.textContent = '⏸'
+
+    this.sound.pauseGameMusic()
+    this.sound.playMenuMusic()
+
+    const splash = document.getElementById('splash-screen')!
+    splash.style.display = 'block'
+    splash.style.opacity = '0'
+    splash.style.transition = 'opacity 0.5s'
+    requestAnimationFrame(() => { splash.style.opacity = '1' })
+  }
+
+  restartSession(): void {
+    document.getElementById('pause-screen')!.style.display  = 'none'
+    document.getElementById('lose-screen')!.style.display   = 'none'
+    document.getElementById('win-screen')!.style.display    = 'none'
+    document.getElementById('damage-overlay')!.style.opacity = '0'
+
+    this.timeLeft       = this.totalGameTime
+    this.score          = 0
+    this.collectedCount = 0
+    this.difficulty     = 1.0
+
+    this.rat.reset()
+    for (const cat of this.cats) cat.resetToPatrol()
+    for (let i = 0; i < this.ingredients.length; i++) {
+      this.ingredients[i].resetIngredient()
+      const slot = document.getElementById(`slot-${i}`)
+      if (slot) slot.classList.remove('collected')
+    }
+
+    this.hud.updateLives(3)
+    this.hud.updateScore(0)
+    this.hud.updateTimer(this.totalGameTime)
+
     const pauseBtn = document.getElementById('pause-btn')!
     pauseBtn.textContent = '⏸'
     pauseBtn.title = 'Pause (ESC)'
     pauseBtn.style.display = 'flex'
 
-    // Resume music and game
     this.sound.resumeGameMusic()
     this.gameState = 'playing'
   }
 
-  // ===== LIFECYCLE =====
 
+  
   startMenuMusic(): void { this.sound.playMenuMusic() }
 
   start(): void {
+     document.getElementById('hud')!.style.display = 'block'
+    document.getElementById('pause-btn')!.style.display = 'flex'
     this.gameState = 'playing'
     this.sound.playGameMusic()
-    // Show pause button now that the game has started
     const pauseBtn = document.getElementById('pause-btn')
     if (pauseBtn) pauseBtn.style.display = 'flex'
     this.loop()
@@ -303,7 +303,6 @@ quit(): void {
     const dt = Math.min(this.timer.getDelta(), 0.05)
     TWEEN.update()
 
-    // Keep rendering even when paused (scene stays visible, frozen)
     if (this.gameState !== 'playing') {
       this.renderer.render(this.scene, this.camera)
       return
@@ -313,7 +312,6 @@ quit(): void {
     this.hud.updateTimer(this.timeLeft)
     if (this.timeLeft <= 0) { this.lose(); return }
 
-    // Difficulty ramps 1.0 → 1.6 as time runs out
     this.difficulty = 1.0 + (1 - this.timeLeft / this.totalGameTime) * 0.6
     for (const cat of this.cats) cat.difficultyMult = this.difficulty
 
@@ -331,7 +329,105 @@ quit(): void {
     this.renderer.render(this.scene, this.camera)
   }
 
-  // ===== PRIVATE HELPERS =====
+  // ===== CAMERA =====
+
+  private updateCamera(): void {
+    const ratPos = this.rat.getPosition()
+    const x = ratPos.x + Math.sin(this.cameraYaw) * Math.cos(this.cameraPitch) * this.cameraDistance
+    const y = ratPos.y + Math.sin(this.cameraPitch) * this.cameraDistance
+    const z = ratPos.z + Math.cos(this.cameraYaw) * Math.cos(this.cameraPitch) * this.cameraDistance
+    this.camera.position.lerp(new THREE.Vector3(x, y, z), 0.08)
+    this.camera.lookAt(ratPos.x, ratPos.y + 0.5, ratPos.z)
+  }
+
+
+  private checkCollections(): void {
+    const ratPos = this.rat.getPosition()
+    for (let i = 0; i < this.ingredients.length; i++) {
+      const ing = this.ingredients[i]
+      if (ing.collected) continue
+      if (ratPos.distanceTo(ing.getPosition()) < ing.getCollectionRadius()) {
+        ing.collect()
+        this.collectedCount++
+        this.score += 100
+
+        const slot = document.getElementById(`slot-${i}`)
+        if (slot) slot.classList.add('collected')
+
+        this.hud.showMessage(`✨ ${ing.data.name} collecté !`, 2000)
+        this.sound.playCollect()
+        this.playCollectAnimation(ing.getPosition(), ing.data.color)
+        this.burstParticles(ing.getPosition(), ing.data.color)
+
+        if (this.collectedCount >= this.ingredients.length) this.win()
+      }
+    }
+  }
+
+  private checkEnemyCollisions(): void {
+    const ratPos = this.rat.getPosition()
+    for (const cat of this.cats) {
+      const result = cat.update(this.timer.getDelta(), ratPos)
+
+      if (result.spotted) {
+        this.hud.showMessage('😾 Un chat t\'a repéré ! Fuis !', 2000)
+      }
+
+      if (result.caught) {
+        this.rat.takeDamage()
+        this.hud.updateLives(this.rat.state.lives)
+        this.hud.showMessage('🙀 Attention au chat!', 2000)
+        this.sound.playDamage()
+        this.playDamageFlash()
+        this.playCameraShake(0.3, 400)
+
+        for (const other of this.cats) {
+          if (other.getPosition().distanceTo(ratPos) < 20) {
+            other.triggerAlert(ratPos)
+          }
+        }
+
+        if (this.rat.state.lives <= 0) this.lose()
+      }
+    }
+  }
+
+
+  private updateMinimap(): void {
+    const ratPos = this.rat.getPosition()
+    this.hud.updateMinimap(
+      ratPos.x, ratPos.z,
+      this.ingredients.map(ing => ({ x: ing.data.position.x, z: ing.data.position.z, collected: ing.collected })),
+      this.cats.map(cat => { const p = cat.getPosition(); return { x: p.x, z: p.z } })
+    )
+  }
+
+
+  private win(): void {
+    this.gameState  = 'win'
+    this.score     += Math.floor(this.timeLeft) * 5
+    this.sound.playWin()
+    const pauseBtn = document.getElementById('pause-btn')
+    if (pauseBtn) pauseBtn.style.display = 'none'
+
+    const target   = this.rat.getPosition()
+    const tweenObj = { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z }
+    new TWEEN.Tween(tweenObj)
+      .to({ x: target.x + 2, y: target.y + 3, z: target.z + 2 }, 1500)
+      .easing(TWEEN.Easing.Cubic.InOut)
+      .onUpdate(() => { this.camera.position.set(tweenObj.x, tweenObj.y, tweenObj.z) })
+      .onComplete(() => { this.hud.showWin(this.score) })
+      .start()
+  }
+
+  private lose(): void {
+    this.gameState = 'lose'
+    this.sound.playLose()
+    const pauseBtn = document.getElementById('pause-btn')
+    if (pauseBtn) pauseBtn.style.display = 'none'
+    this.hud.showLose()
+  }
+
 
   private playIntroCameraAnimation(): void {
     const startPos = { x: 20, y: 15, z: 20 }
@@ -341,7 +437,10 @@ quit(): void {
     new TWEEN.Tween(startPos)
       .to(endPos, 3000)
       .easing(TWEEN.Easing.Cubic.InOut)
-      .onUpdate(() => { this.camera.position.set(startPos.x, startPos.y, startPos.z); this.camera.lookAt(0, 0, 0) })
+      .onUpdate(() => {
+        this.camera.position.set(startPos.x, startPos.y, startPos.z)
+        this.camera.lookAt(0, 0, 0)
+      })
       .start()
   }
 
@@ -388,7 +487,10 @@ quit(): void {
     for (let i = 0; i < 5; i++) {
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(30 * 3), 3))
-      const mat = new THREE.PointsMaterial({ color: 0xFFD700, size: 0.12, transparent: true, opacity: 0, sizeAttenuation: true })
+      const mat = new THREE.PointsMaterial({
+        color: 0xFFD700, size: 0.12,
+        transparent: true, opacity: 0, sizeAttenuation: true
+      })
       const pts = new THREE.Points(geo, mat)
       pts.visible = false
       this.scene.add(pts)
@@ -402,128 +504,34 @@ quit(): void {
     const mat = pts.material as THREE.PointsMaterial
     mat.color.set(color); mat.opacity = 1
     pts.position.copy(position); pts.visible = true
-    const posArr    = pts.geometry.attributes.position.array as Float32Array
+
+    const posArr     = pts.geometry.attributes.position.array as Float32Array
     const velocities: THREE.Vector3[] = []
     for (let i = 0; i < 30; i++) {
       posArr[i*3] = posArr[i*3+1] = posArr[i*3+2] = 0
-      velocities.push(new THREE.Vector3((Math.random()-0.5)*6, Math.random()*5+2, (Math.random()-0.5)*6))
+      velocities.push(new THREE.Vector3(
+        (Math.random()-0.5)*6, Math.random()*5+2, (Math.random()-0.5)*6
+      ))
     }
     pts.geometry.attributes.position.needsUpdate = true
+
     let elapsed = 0
     const animate = () => {
       elapsed += 0.016
-      if (elapsed > 1) { pts.visible = false; return }
+      if (elapsed > 1.0) { pts.visible = false; return }
+      requestAnimationFrame(animate)
       for (let i = 0; i < 30; i++) {
         posArr[i*3]   += velocities[i].x * 0.016
-        posArr[i*3+1] += velocities[i].y * 0.016 - 9.8 * elapsed * 0.016
+        posArr[i*3+1] += velocities[i].y * 0.016 - 0.1
         posArr[i*3+2] += velocities[i].z * 0.016
       }
       pts.geometry.attributes.position.needsUpdate = true
       mat.opacity = 1 - elapsed
-      requestAnimationFrame(animate)
     }
     animate()
   }
 
-  private updateCamera(): void {
-    const ratPos = this.rat.getPosition()
-    const x = ratPos.x + Math.sin(this.cameraYaw) * this.cameraDistance * Math.cos(this.cameraPitch)
-    const y = ratPos.y + Math.sin(this.cameraPitch) * this.cameraDistance + 1
-    const z = ratPos.z + Math.cos(this.cameraYaw) * this.cameraDistance * Math.cos(this.cameraPitch)
-    this.camera.position.lerp(new THREE.Vector3(x, y, z), 0.1)
-    this.camera.lookAt(ratPos.x, ratPos.y + 0.5, ratPos.z)
-  }
-
-  private checkCollections(): void {
-    const ratPos = this.rat.getPosition()
-    for (let i = 0; i < this.ingredients.length; i++) {
-      const ing = this.ingredients[i]
-      if (ing.collected) continue
-      if (ratPos.distanceTo(ing.getPosition()) < ing.getCollectionRadius()) {
-        ing.collect()
-        this.collectedCount++
-        this.score += 100
-        this.hud.collectIngredient(i)
-        this.hud.updateScore(this.score)
-        this.sound.playCollect()
-        this.playCollectAnimation(ing.data.position, ing.data.color)
-        this.burstParticles(ing.data.position, ing.data.color)
-        const msgs = [
-          `🧀 Parfait! ${ing.data.name} trouvé!`,
-          `🐀 Magnifique! ${ing.data.name} dans la poche!`,
-          `⭐ ${ing.data.name}! Rémi est un génie!`,
-          `🎉 ${ing.data.name}! Le chef est content!`,
-          `✨ ${ing.data.name}! Quel talent!`
-        ]
-        this.hud.showMessage(msgs[i], 2000)
-        if (this.collectedCount === 5) this.win()
-      }
-    }
-  }
-
-  private checkEnemyCollisions(): void {
-    const ratPos = this.rat.getPosition()
-    for (const cat of this.cats) {
-      const result = cat.update(0.016, ratPos)
-
-      // 🔊 Cat just spotted the rat — play meow
-      if (result.spotted) {
-        this.sound.playCatMeow()
-      }
-
-      if (result.caught && !this.rat.state.isInvincible) {
-        this.rat.takeDamage()
-        this.hud.updateLives(this.rat.state.lives)
-        this.hud.showMessage('🙀 MON DIEU! Attention au chat!', 2000)
-        this.sound.playDamage()
-        this.playDamageFlash()
-        this.playCameraShake(0.3, 400)
-
-        for (const other of this.cats) {
-          if (other.getPosition().distanceTo(ratPos) < 20) {
-            other.triggerAlert(ratPos)
-          }
-        }
-
-        if (this.rat.state.lives <= 0) this.lose()
-      }
-    }
-  }
-
-  private updateMinimap(): void {
-    const ratPos = this.rat.getPosition()
-    this.hud.updateMinimap(
-      ratPos.x, ratPos.z,
-      this.ingredients.map(ing => ({ x: ing.data.position.x, z: ing.data.position.z, collected: ing.collected })),
-      this.cats.map(cat => { const p = cat.getPosition(); return { x: p.x, z: p.z } })
-    )
-  }
-
-  private win(): void {
-    this.gameState  = 'win'
-    this.score     += Math.floor(this.timeLeft) * 5
-    this.sound.playWin()
-    // Hide pause button on win
-    const pauseBtn = document.getElementById('pause-btn')
-    if (pauseBtn) pauseBtn.style.display = 'none'
-    const target   = this.rat.getPosition()
-    const tweenObj = { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z }
-    new TWEEN.Tween(tweenObj)
-      .to({ x: target.x + 2, y: target.y + 3, z: target.z + 2 }, 1500)
-      .easing(TWEEN.Easing.Cubic.InOut)
-      .onUpdate(() => { this.camera.position.set(tweenObj.x, tweenObj.y, tweenObj.z) })
-      .onComplete(() => { this.hud.showWin(this.score) })
-      .start()
-  }
-
-  private lose(): void {
-    this.gameState = 'lose'
-    this.sound.playLose()
-    // Hide pause button on lose
-    const pauseBtn = document.getElementById('pause-btn')
-    if (pauseBtn) pauseBtn.style.display = 'none'
-    this.hud.showLose()
-  }
+  // ===== AR HOOKS =====
 
   setARCamera(camera: THREE.PerspectiveCamera): void { this.camera = camera }
 

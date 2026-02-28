@@ -1,7 +1,6 @@
 import { GameEngine } from "./engine/GameEngine";
 import { StoryBook } from "./scenes/StoryBook";
 
-
 async function bootstrap() {
   const splashScreen = document.getElementById('splash-screen')
   const loading      = document.getElementById('loading')
@@ -11,6 +10,8 @@ async function bootstrap() {
   if (!loading) { console.error('#loading manquant'); return }
   if (!splashScreen) { console.error('#splash-screen manquant'); return }
 
+  canvas.style.display = 'none'
+
   const enginePromise = (async () => {
     const engine = new GameEngine(canvas)
     await engine.init()
@@ -18,29 +19,30 @@ async function bootstrap() {
   })()
 
   splashScreen.addEventListener('click', async () => {
-    const engine = await enginePromise
-
-    engine.startMenuMusic()
-
     splashScreen.style.opacity = '0'
     splashScreen.style.transition = 'opacity 0.5s'
     loading.style.display = 'flex'
-
     setTimeout(() => { splashScreen.style.display = 'none' }, 500)
 
+    const [engine] = await Promise.all([
+      enginePromise,
+      new Promise(resolve => setTimeout(resolve, 3500))
+    ])
+
+    engine.startMenuMusic()
+
+    loading.style.opacity = '0'
+    loading.style.transition = 'opacity 0.5s'
+
     setTimeout(() => {
-      loading.style.opacity = '0'
-      loading.style.transition = 'opacity 0.5s'
+      loading.style.display = 'none'
 
-      setTimeout(() => {
-        loading.style.display = 'none'
+      new StoryBook(() => {
+        canvas.style.display = 'block'  
+        engine.start()
+      })
 
-        new StoryBook(() => {
-          engine.start()
-        })
-
-      }, 500)
-    }, 2500)
+    }, 500)
   })
 }
 
