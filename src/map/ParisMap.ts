@@ -1,36 +1,32 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { PhysicsWorld } from '../engine/PhysicsWorld'
-
-interface BuildingConfig {
-  x: number
-  z: number
-  w: number
-  d: number
-  h: number
-  color: number
-}
-
 
 export class ParisMap {
   private scene: THREE.Scene
   private physics: PhysicsWorld
   public buildings: THREE.Group = new THREE.Group()
   private streetLights: THREE.Group = new THREE.Group()
-
-  private readonly COLORS = {
-    ground: 0x8a7a6a,
-    road: 0x555555,
-    sidewalk: 0xc8b89a,
-    buildings: [0xd4c4a8, 0xc8b99a, 0xe0d0b8, 0xb8a890, 0xdfd0bb, 0xcabc9e],
-    windows: 0x88aacc,
-    roofs: [0x7a6878, 0x8a7a88, 0x6a5a68],
-    greenery: 0x5a8a4a,
-    fountain: 0x4488aa
-  }
+  private balloon!: THREE.Group
+  private fountainWater!: THREE.Mesh
+  public ambushSpots: THREE.Vector3[] = []
 
   private readonly MAP_SIZE = 80
-  private readonly ROAD_WIDTH = 5
+
+  private readonly C = {
+    sky:       0xd4c5e2,
+    fog:       0xc8b8d8,
+    road:      0x9a8878,
+    sidewalk:  0xe8d8c0,
+    buildings: [0xf5efe0, 0xfae8d4, 0xf0e8d8, 0xfcf0e0, 0xede0cc, 0xf8eadc, 0xf2e4d0, 0xfaf0e6],
+    mansard:   [0xc8a0b0, 0xb89098, 0xd4b0b8, 0xaa8890, 0xc0889a],
+    trunk:     0xa08060,
+    leaves:    0x7ab06a,
+    stone:     0xddd0c0,
+    water:     0x6a9ec4,
+    lamp:      0x6a5a4a,
+  }
 
   constructor(scene: THREE.Scene, physics: PhysicsWorld) {
     this.scene = scene
@@ -38,447 +34,431 @@ export class ParisMap {
   }
 
   build(): void {
+    this.setupAtmosphere()
     this.createGround()
-    this.createStreetGrid()
-    this.createBuildings()
-    this.createSidewalkDetails()
+    this.createSeine()
+    this.createCityBlocks()
+    this.createAlleyways()
+    this.createElevatedPlatform()
+    this.createButterPuddles()
     this.createStreetLights()
-    this.createCentralPlace()
+    this.createNotreDame()
+    this.createCentralFountain()
     this.createTrees()
-
+    this.createHotAirBalloon()
     this.scene.add(this.buildings, this.streetLights)
+    this.loadEiffelTower()
+  }
+
+  update(t: number): void {
+    if (this.fountainWater) {
+      this.fountainWater.scale.x = 1 + Math.sin(t * 2.5) * 0.04
+      this.fountainWater.scale.z = 1 + Math.cos(t * 2.5) * 0.04
+    }
+    if (this.balloon) {
+      this.balloon.position.y = 32 + Math.sin(t * 0.35) * 2.5
+      this.balloon.rotation.y += 0.002
+    }
+  }
+
+  private setupAtmosphere(): void {
+    this.scene.background = new THREE.Color(this.C.sky)
+    this.scene.fog = new THREE.Fog(this.C.fog, 35, 100)  
   }
 
   private createGround(): void {
-    const geo = new THREE.PlaneGeometry(this.MAP_SIZE * 2, this.MAP_SIZE * 2)
-    const mat = new THREE.MeshLambertMaterial({ color: this.COLORS.road })
-    const ground = new THREE.Mesh(geo, mat)
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.MAP_SIZE * 3, this.MAP_SIZE * 3),
+      new THREE.MeshLambertMaterial({ color: this.C.road })
+    )
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = true
     this.scene.add(ground)
-
     this.physics.createGroundPlane(0)
-  }
 
-  private createStreetGrid(): void {
-    const roadMat = new THREE.MeshLambertMaterial({ color: this.COLORS.road })
-    const sidewalkMat = new THREE.MeshLambertMaterial({ color: this.COLORS.sidewalk })
-
-    const numRoads = 5
-    const spacing = 20
-
-    for (let i = -numRoads; i <= numRoads; i++) {
-      const hRoad = new THREE.Mesh(
-        new THREE.PlaneGeometry(this.MAP_SIZE * 2, this.ROAD_WIDTH),
-        roadMat
-      )
-      hRoad.rotation.x = -Math.PI / 2
-      hRoad.position.set(0, 0.01, i * spacing)
-      hRoad.receiveShadow = true
-      this.scene.add(hRoad)
-
-      const vRoad = new THREE.Mesh(
-        new THREE.PlaneGeometry(this.ROAD_WIDTH, this.MAP_SIZE * 2),
-        roadMat
-      )
-      vRoad.rotation.x = -Math.PI / 2
-      vRoad.position.set(i * spacing, 0.01, 0)
-      vRoad.receiveShadow = true
-      this.scene.add(vRoad)
-
-      for (const side of [-1, 1]) {
-        const sw = new THREE.Mesh(
-          new THREE.PlaneGeometry(this.MAP_SIZE * 2, 2),
-          sidewalkMat
-        )
-        sw.rotation.x = -Math.PI / 2
-        sw.position.set(0, 0.02, i * spacing + side * 3.2)
-        this.scene.add(sw)
-      }
-    }
-
-    const dashMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    for (let i = -numRoads; i <= numRoads; i++) {
-      for (let j = -10; j <= 10; j++) {
-        const dash = new THREE.Mesh(
-          new THREE.PlaneGeometry(2.5, 0.15),
-          dashMat
-        )
-        dash.rotation.x = -Math.PI / 2
-        dash.position.set(j * 5, 0.015, i * spacing)
-        this.scene.add(dash)
-
-        const dashV = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.15, 2.5),
-          dashMat
-        )
-        dashV.rotation.x = -Math.PI / 2
-        dashV.position.set(i * spacing, 0.015, j * 5)
-        this.scene.add(dashV)
-      }
+    const swMat = new THREE.MeshLambertMaterial({ color: this.C.sidewalk })
+    for (const r of [0, 18, -18, 36, -36, 54, -54]) {
+      const h = new THREE.Mesh(new THREE.PlaneGeometry(this.MAP_SIZE * 3, 4.5), swMat)
+      h.rotation.x = -Math.PI / 2; h.position.set(0, 0.01, r); this.scene.add(h)
+      const v = new THREE.Mesh(new THREE.PlaneGeometry(4.5, this.MAP_SIZE * 3), swMat)
+      v.rotation.x = -Math.PI / 2; v.position.set(r, 0.01, 0); this.scene.add(v)
     }
   }
 
-  private createBuildings(): void {
-    const blocks = this.generateCityBlocks()
-
-    for (const block of blocks) {
-      this.buildBuilding(block)
-    }
-  }
-
-  private generateCityBlocks(): BuildingConfig[] {
-    const configs: BuildingConfig[] = []
-    const spacing = 20
-
-    for (let bx = -4; bx <= 4; bx++) {
-      for (let bz = -4; bz <= 4; bz++) {
-        const baseX = bx * spacing
-        const baseZ = bz * spacing
-
-        const numBuildings = 2 + Math.floor(Math.random() * 3)
-
-        for (let b = 0; b < numBuildings; b++) {
-          const angle = (b / numBuildings) * Math.PI * 2
-          const radius = 5 + Math.random() * 3
-          const x = baseX + Math.cos(angle) * radius
-          const z = baseZ + Math.sin(angle) * radius
-          const w = 4 + Math.random() * 5
-          const d = 4 + Math.random() * 5
-          const h = 4 + Math.random() * 10 
-
-          const colorIdx = Math.floor(Math.random() * this.COLORS.buildings.length)
-
-          configs.push({ x, z, w, d, h, color: this.COLORS.buildings[colorIdx] })
-        }
-      }
-    }
-
-    return configs
-  }
-
-  private buildBuilding(config: BuildingConfig): void {
-    const { x, z, w, d, h, color } = config
-
-    const group = new THREE.Group()
-
-    const bodyGeo = new THREE.BoxGeometry(w, h, d)
-    const bodyMat = new THREE.MeshLambertMaterial({ color })
-    const body = new THREE.Mesh(bodyGeo, bodyMat)
-    body.position.set(0, h / 2, 0)
-    body.castShadow = true
-    body.receiveShadow = true
-    group.add(body)
-
-    const roofColorIdx = Math.floor(Math.random() * this.COLORS.roofs.length)
-    const roofGeo = new THREE.BoxGeometry(w, h * 0.2, d)
-    const roofMat = new THREE.MeshLambertMaterial({ color: this.COLORS.roofs[roofColorIdx] })
-    const roof = new THREE.Mesh(roofGeo, roofMat)
-    roof.position.set(0, h + h * 0.1, 0)
-    group.add(roof)
-
-    this.addWindows(group, w, h, d)
-
-    this.addGroundFloor(group, w, d)
-
-    group.position.set(x, 0, z)
-    this.buildings.add(group)
-
-    const halfExtents = new CANNON.Vec3(w / 2, h / 2 + 1, d / 2)
-    this.physics.createBox(
-      halfExtents,
-      new CANNON.Vec3(x, h / 2, z)
+  private createSeine(): void {
+    const river = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.MAP_SIZE * 3, 20),
+      new THREE.MeshLambertMaterial({ color: this.C.water, transparent: true, opacity: 0.9 })
     )
-  }
+    river.rotation.x = -Math.PI / 2
+    river.position.set(0, 0.02, -35)
+    this.scene.add(river)
 
-  private addWindows(group: THREE.Group, w: number, h: number, d: number): void {
-    const winMat = new THREE.MeshBasicMaterial({
-      color: this.COLORS.windows,
-      transparent: true,
-      opacity: 0.8
-    })
-    const winDark = new THREE.MeshBasicMaterial({
-      color: 0x223344,
-      transparent: true,
-      opacity: 0.9
-    })
+    const quaiMat = new THREE.MeshLambertMaterial({ color: 0xe0d0b0 })
+    for (const side of [-1, 1]) {
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(this.MAP_SIZE * 3, 5), quaiMat)
+      q.rotation.x = -Math.PI / 2; q.position.set(0, 0.03, -35 + side * 12); this.scene.add(q)
+    }
 
-    const rows = Math.floor(h / 2.2)
-    const colsX = Math.floor(w / 1.8)
-    const colsZ = Math.floor(d / 1.8)
-
-    const winGeo = new THREE.PlaneGeometry(0.7, 0.9)
-
-    for (let row = 1; row <= rows; row++) {
-      for (let col = 0; col < colsX; col++) {
-        const wx = -w / 2 + (col + 0.8) * (w / colsX)
-        const wy = row * 2
-        const isLit = Math.random() > 0.4
-
-        const win = new THREE.Mesh(winGeo, isLit ? winMat : winDark)
-        win.position.set(wx, wy, d / 2 + 0.01)
-        group.add(win)
-
-        const winBack = new THREE.Mesh(winGeo, isLit ? winMat : winDark)
-        winBack.position.set(wx, wy, -d / 2 - 0.01)
-        winBack.rotation.y = Math.PI
-        group.add(winBack)
+    const stoneMat = new THREE.MeshLambertMaterial({ color: this.C.stone })
+    const deck1 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 22), stoneMat)
+    deck1.position.set(8, 0.9, -35); this.scene.add(deck1)
+    const deck2 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 22), stoneMat)
+    deck2.position.set(-8, 0.9, -35); this.scene.add(deck2)
+    for (const [bx, pz] of [[8,-7],[8,0],[8,7],[-8,-7],[-8,0],[-8,7]]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 2.5, 8), stoneMat)
+      p.position.set(bx, 0.5, -35 + pz); this.scene.add(p)
+    }
+    for (const side of [-1, 1]) {
+      for (const bx of [8, -8]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 0.2), stoneMat)
+        rail.position.set(bx, 1.4, -35 + side * 10.5); this.scene.add(rail)
       }
     }
   }
 
-  private addGroundFloor(group: THREE.Group, w: number, d: number): void {
-    const doorGeo = new THREE.BoxGeometry(0.8, 1.8, 0.1)
-    const doorMat = new THREE.MeshLambertMaterial({ color: 0x3a2010 })
-    const door = new THREE.Mesh(doorGeo, doorMat)
-    door.position.set(0, 0.9, d / 2 + 0.05)
-    group.add(door)
+  private createCityBlocks(): void {
+    const blocks: [number, number, number, number, number][] = [
+      [ 10,  15,  8,  6,  14], [ 20,  15,  7,  7,  18], [ 30,  15,  8,  6,  12],
+      [ 10,  25,  6,  5,  10], [ 20,  25,  8,  6,  16], [ 30,  25,  6,  6,  14],
+      [ 10,  35,  7,  6,  11], [ 20,  35,  6,  5,  13], [ 30,  35,  7,  6,   9],
+      [-10,  15,  8,  6,  16], [-20,  15,  7,  7,  14], [-30,  15,  8,  6,  18],
+      [-10,  25,  6,  5,  12], [-20,  25,  8,  6,  10], [-30,  25,  6,  6,  15],
+      [-10,  35,  7,  6,   9], [-20,  35,  6,  5,  11], [-30,  35,  7,  6,  13],
+      [ 38,   5,  6,  6,  12], [ 38,  15,  5,  5,   9], [ 38,  25,  6,  5,  11],
+      [ 38,  -5,  6,  6,  10], [ 38, -15,  5,  5,  13], [ 38, -25,  6,  5,   8],
+      [-38,   5,  6,  6,  11], [-38,  15,  5,  5,  10], [-38,  25,  6,  5,  14],
+      [-38,  -5,  6,  6,   9], [-38, -15,  5,  5,  12], [-38, -25,  6,  5,   8],
+      [ 10, -15,  8,  6,  15], [ 20, -15,  7,  7,  11], [ 30, -15,  8,  6,  14],
+      [ 10, -25,  6,  5,  10], [ 20, -25,  7,  6,  13], [ 30, -25,  6,  6,   9],
+      [-10, -15,  8,  6,  12], [-20, -15,  7,  7,  16], [-30, -15,  8,  6,  10],
+      [-10, -25,  6,  5,  14], [-20, -25,  7,  6,  11], [-30, -25,  6,  6,  13],
+      [  7,   7,  5,  5,  10], [ -7,   7,  5,  5,  12], [  7,  -7,  5,  5,   9], [ -7,  -7,  5,  5,  11],
+      [ 46,  10,  5,  5,   8], [-46,  10,  5,  5,   9], [ 46, -10,  5,  5,   7], [-46, -10,  5,  5,   8],
+      [ 46,  28,  5,  5,   7], [-46,  28,  5,  5,   8], [ 15, -30,  6,  4,   8], [-15, -30,  6,  4,   9],
+    ]
 
-    const frameGeo = new THREE.BoxGeometry(1, 2, 0.08)
-    const frameMat = new THREE.MeshLambertMaterial({ color: 0x8a7a60 })
-    const frame = new THREE.Mesh(frameGeo, frameMat)
-    frame.position.set(0, 1, d / 2 + 0.08)
-    group.add(frame)
+    for (const [x, z, w, d, h] of blocks) this.addBuilding(x, z, w, d, h)
+  }
 
+  private addBuilding(x: number, z: number, w: number, d: number, h: number): void {
+    const grp    = new THREE.Group()
+    const color  = this.C.buildings[Math.floor(Math.random() * this.C.buildings.length)]
+    const rColor = this.C.mansard[Math.floor(Math.random() * this.C.mansard.length)]
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshLambertMaterial({ color }))
+    body.position.y = h / 2; body.castShadow = true; body.receiveShadow = true
+    grp.add(body)
+
+    // Mansard roof
+    const r1 = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, h * 0.18, d + 0.4),
+      new THREE.MeshLambertMaterial({ color: rColor }))
+    r1.position.y = h + h * 0.09; grp.add(r1)
+    const r2 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.58, h * 0.12, d * 0.58),
+      new THREE.MeshLambertMaterial({ color: rColor }))
+    r2.position.y = h + h * 0.23; grp.add(r2)
+
+    // Chimney
     if (Math.random() > 0.5) {
-      const awningGeo = new THREE.BoxGeometry(w * 0.6, 0.1, 1.2)
-      const awningColors = [0xcc4444, 0x4444cc, 0x44aa44, 0xcc8844]
-      const awningMat = new THREE.MeshLambertMaterial({
-        color: awningColors[Math.floor(Math.random() * awningColors.length)]
-      })
-      const awning = new THREE.Mesh(awningGeo, awningMat)
-      awning.position.set(0, 2.2, d / 2 + 0.6)
-      awning.rotation.x = 0.3
-      group.add(awning)
+      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.4),
+        new THREE.MeshLambertMaterial({ color: 0x886655 }))
+      ch.position.set((Math.random() - 0.5) * w * 0.5, h + h * 0.3 + 0.6, (Math.random() - 0.5) * d * 0.5)
+      grp.add(ch)
     }
-  }
 
-  private createCentralPlace(): void {
-    const plazaGeo = new THREE.CircleGeometry(8, 32)
-    const plazaMat = new THREE.MeshLambertMaterial({ color: this.COLORS.sidewalk })
-    const plaza = new THREE.Mesh(plazaGeo, plazaMat)
-    plaza.rotation.x = -Math.PI / 2
-    plaza.position.y = 0.02
-    this.scene.add(plaza)
-
-    const fountainBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.5, 3, 0.5, 16),
-      new THREE.MeshLambertMaterial({ color: 0x999980 })
-    )
-    fountainBase.position.y = 0.25
-    this.scene.add(fountainBase)
-
-    const waterGeo = new THREE.CylinderGeometry(2, 2, 0.2, 16)
-    const waterMat = new THREE.MeshLambertMaterial({
-      color: this.COLORS.fountain,
-      transparent: true,
-      opacity: 0.8
-    })
-    const water = new THREE.Mesh(waterGeo, waterMat)
-    water.position.y = 0.6
-    this.scene.add(water)
-
-    const column = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.25, 2.5, 8),
-      new THREE.MeshLambertMaterial({ color: 0x888870 })
-    )
-    column.position.y = 1.5
-    this.scene.add(column)
-
-    const topDec = new THREE.Mesh(
-      new THREE.SphereGeometry(0.4, 8, 8),
-      new THREE.MeshLambertMaterial({ color: 0xaaaaaa })
-    )
-    topDec.position.y = 3
-    this.scene.add(topDec)
-  }
-
-  private createTrees(): void {
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3a1a })
-    const leafMat = new THREE.MeshToonMaterial({ color: this.COLORS.greenery })
-
-    const treePositions = [
-      [-6, 6], [6, 6], [-6, -6], [6, -6],
-      [10, 0], [-10, 0], [0, 10], [0, -10],
-      [18, 5], [-18, 5], [18, -5], [-18, -5],
-      [5, 18], [-5, 18], [5, -18], [-5, -18],
-    ]
-
-    for (const [x, z] of treePositions) {
-      const tree = new THREE.Group()
-
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.15, 0.2, 1.5, 6),
-        trunkMat
-      )
-      trunk.position.y = 0.75
-      tree.add(trunk)
-
-      const leaves = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(1 + Math.random() * 0.5, 0),
-        leafMat
-      )
-      leaves.position.y = 2.2
-      leaves.castShadow = true
-      tree.add(leaves)
-
-      tree.position.set(x, 0, z)
-      this.scene.add(tree)
+    // Awning
+    if (Math.random() > 0.4) {
+      const awnColors = [0xf4a0b0, 0xe8c090, 0xa0c0a0, 0xf0d080, 0xd0a0d0, 0xa0b8d0]
+      const awn = new THREE.Mesh(new THREE.BoxGeometry(w * 0.65, 0.1, 1.5),
+        new THREE.MeshLambertMaterial({ color: awnColors[Math.floor(Math.random() * 6)] }))
+      awn.position.set(0, 2.4, d / 2 + 0.75); awn.rotation.x = 0.28; grp.add(awn)
     }
+
+    // Ground floor door
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.12),
+      new THREE.MeshLambertMaterial({ color: 0x5a3820 }))
+    door.position.set((Math.random() - 0.5) * (w - 1.5), 0.9, d / 2 + 0.06)
+    grp.add(door)
+
+    this.addWindows(grp, w, h, d)
+    grp.position.set(x, 0, z)
+    this.buildings.add(grp)
+    this.physics.createBox(new CANNON.Vec3(w / 2, h / 2, d / 2), new CANNON.Vec3(x, h / 2, z))
   }
 
-  private createSidewalkDetails(): void {
-    const tablePositions = [
-      [8, 5], [-8, -5], [12, 8], [-12, 8]
-    ]
-    const tableMat = new THREE.MeshLambertMaterial({ color: 0x8a6030 })
-    const chairMat = new THREE.MeshLambertMaterial({ color: 0x6a4828 })
-
-    for (const [x, z] of tablePositions) {
-      const table = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.5, 0.5, 0.05, 8),
-        tableMat
-      )
-      table.position.set(x, 0.8, z)
-      this.scene.add(table)
-
-      const tableLeg = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 0.8, 6),
-        tableMat
-      )
-      tableLeg.position.set(x, 0.4, z)
-      this.scene.add(tableLeg)
-
-      for (let c = 0; c < 2; c++) {
-        const angle = c * Math.PI
-        const chair = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, 0.05, 0.4),
-          chairMat
-        )
-        chair.position.set(
-          x + Math.cos(angle) * 0.8,
-          0.6,
-          z + Math.sin(angle) * 0.8
-        )
-        this.scene.add(chair)
+  private addWindows(grp: THREE.Group, w: number, h: number, d: number): void {
+    const litMat  = new THREE.MeshBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: 0.9 })
+    const darkMat = new THREE.MeshBasicMaterial({ color: 0x3a4455, transparent: true, opacity: 0.85 })
+    const geo     = new THREE.PlaneGeometry(0.55, 0.75)
+    const rows    = Math.min(Math.floor(h / 2.5), 5)
+    const cols    = Math.min(Math.floor(w / 1.8), 5)
+    for (let row = 1; row <= rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const wx  = -w / 2 + (col + 0.7) * (w / cols)
+        const wy  = row * 2.5
+        const win = new THREE.Mesh(geo, Math.random() > 0.38 ? litMat : darkMat)
+        win.position.set(wx, wy, d / 2 + 0.01)
+        grp.add(win)
       }
     }
+  }
 
-    const baguetteMat = new THREE.MeshToonMaterial({ color: 0xc8a050 })
-    for (let b = 0; b < 8; b++) {
-      const baguette = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.08, 1.5, 4, 8),
-        baguetteMat
-      )
-      const angle = (b / 8) * Math.PI * 2
-      const r = 6 + Math.random() * 10
-      baguette.position.set(
-        Math.cos(angle) * r,
-        0.08,
-        Math.sin(angle) * r
-      )
-      baguette.rotation.z = Math.PI / 2
-      baguette.rotation.y = Math.random() * Math.PI
-      this.scene.add(baguette)
-    }
+  private createAlleyways(): void {
+    const archMat = new THREE.MeshLambertMaterial({ color: 0xd0c0a8 })
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x3a3028 })
 
-    const butterMat = new THREE.MeshBasicMaterial({
-      color: 0xffee88,
-      transparent: true,
-      opacity: 0.7
-    })
-    const butterPositions = [
-      [3, 3], [-4, 7], [8, -3], [-9, -6], [5, -9]
+    const archways: [number, number, number][] = [
+      [ 15,  20,   0],
+      [-15,  20, Math.PI],
+      [ 25,  -5,   0],
+      [-25,  -5, Math.PI],
+      [  0,  30, Math.PI / 2],
+      [  0, -20, Math.PI / 2],
+      [ 35,  20,   0],
+      [-35,  20, Math.PI],
     ]
-    for (const [bx, bz] of butterPositions) {
-      const puddle = new THREE.Mesh(
-        new THREE.CircleGeometry(1 + Math.random() * 0.5, 16),
-        butterMat
-      )
-      puddle.rotation.x = -Math.PI / 2
-      puddle.position.set(bx, 0.03, bz)
-      this.scene.add(puddle)
+
+    for (const [x, z, ry] of archways) {
+      const grp = new THREE.Group()
+
+      const pillarL = new THREE.Mesh(new THREE.BoxGeometry(1.3, 5.5, 1.3), archMat)
+      pillarL.position.set(-2.2, 2.75, 0); grp.add(pillarL)
+      const pillarR = new THREE.Mesh(new THREE.BoxGeometry(1.3, 5.5, 1.3), archMat)
+      pillarR.position.set(2.2, 2.75, 0); grp.add(pillarR)
+      const top = new THREE.Mesh(new THREE.BoxGeometry(5.8, 1.6, 1.3), archMat)
+      top.position.set(0, 5.8, 0); grp.add(top)
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.8, 0.9), darkMat)
+      inner.position.set(0, 2.9, 0.2); grp.add(inner)
+
+      grp.position.set(x, 0, z)
+      grp.rotation.y = ry
+      this.scene.add(grp)
+
+      const off = new THREE.Vector3(0, 0.5, 1.8).applyEuler(new THREE.Euler(0, ry, 0))
+      this.ambushSpots.push(new THREE.Vector3(x + off.x, 0.5, z + off.z))
+
+      this.physics.createBox(new CANNON.Vec3(0.65, 2.75, 0.65), new CANNON.Vec3(x - 2.2, 2.75, z))
+      this.physics.createBox(new CANNON.Vec3(0.65, 2.75, 0.65), new CANNON.Vec3(x + 2.2, 2.75, z))
     }
+  }
+
+  private createElevatedPlatform(): void {
+    const mat  = new THREE.MeshLambertMaterial({ color: this.C.stone })
+    const dark = new THREE.MeshLambertMaterial({ color: 0xb8a888 })
+
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(9, 0.5, 9), mat)
+    plat.position.set(0, 3.8, -20); plat.castShadow = true; plat.receiveShadow = true
+    this.scene.add(plat)
+    this.physics.createBox(new CANNON.Vec3(4.5, 0.25, 4.5), new CANNON.Vec3(0, 3.8, -20))
+
+    for (const [px, pz] of [[-3.5,-3.5],[3.5,-3.5],[-3.5,3.5],[3.5,3.5]]) {
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.44, 3.8, 8), dark)
+      pillar.position.set(px, 1.9, -20 + pz); this.scene.add(pillar)
+    }
+
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.12, 7), mat)
+    ramp.position.set(4.2, 1.9, -20); ramp.rotation.x = Math.PI * 0.085
+    ramp.castShadow = true; ramp.receiveShadow = true; this.scene.add(ramp)
+    this.physics.createBox(new CANNON.Vec3(1.4, 0.18, 3.5), new CANNON.Vec3(4.2, 1.9, -20))
+
+    const railMat = new THREE.MeshLambertMaterial({ color: 0x9a9080 })
+    for (const [rx, rz, rw, rd] of [[0,-4.4,9,0.15],[0,4.4,9,0.15],[-4.4,0,0.15,9]]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.65, rd), railMat)
+      rail.position.set(rx, 4.35, -20 + rz); this.scene.add(rail)
+    }
+  }
+
+  private createButterPuddles(): void {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffe880, transparent: true, opacity: 0.72 })
+    const spots: [number, number, number][] = [
+      [15,20,1.1],[-15,20,0.9],[25,-5,1.0],[-25,-5,1.1],[0,30,0.8],[0,-20,1.0],
+      [3,4,0.7],[-3,-4,0.9],[5,-3,0.8],[-5,3,0.7],
+      [7,-23,1.0],[-7,-23,0.9],[9,-24,0.8],
+      [4,-17,0.8],[3,-18,0.7],[5,-16,0.9],
+      [18,8,0.8],[-18,-8,1.0],[12,-10,0.9],[-12,10,0.8],[22,0,0.7],[-22,0,0.8],
+      [30,5,0.7],[-30,-5,0.9],[0,18,0.8],[8,-8,0.7],[-8,8,0.9],
+    ]
+    for (const [px, pz, r] of spots) {
+      const p = new THREE.Mesh(new THREE.CircleGeometry(r, 14), mat)
+      p.rotation.x = -Math.PI / 2; p.position.set(px, 0.03, pz); this.scene.add(p)
+    }
+  }
+
+  private loadEiffelTower(): void {
+    new GLTFLoader().load('/eiffel_tower.glb', (gltf) => {
+      const tower = gltf.scene
+      const box   = new THREE.Box3().setFromObject(tower)
+      const size  = new THREE.Vector3(); box.getSize(size)
+      tower.scale.setScalar(38 / size.y)
+      box.setFromObject(tower)
+      tower.position.set(-22, -box.min.y, 10)
+      tower.traverse(c => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true } })
+      this.scene.add(tower)
+      this.physics.createBox(new CANNON.Vec3(4, 19, 4), new CANNON.Vec3(-22, 19, 10))
+    }, undefined, () => this.createEiffelFallback())
+  }
+
+  private createEiffelFallback(): void {
+    const grp = new THREE.Group()
+    const mat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a })
+    for (const [lx, lz] of [[1,1],[-1,1],[1,-1],[-1,-1]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.8, 9, 6), mat)
+      leg.position.set(lx * 3.5, 4.5, lz * 3.5); grp.add(leg)
+    }
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.4, 7), mat); p1.position.y = 9; grp.add(p1)
+    const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 2.8, 9, 8), mat); mid.position.y = 14; grp.add(mid)
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.8, 16, 6), mat); spire.position.y = 27; grp.add(spire)
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), new THREE.MeshBasicMaterial({ color: 0xff3333 }))
+    tip.position.y = 35; grp.add(tip)
+    grp.position.set(-22, 0, 10); this.scene.add(grp)
+    this.physics.createBox(new CANNON.Vec3(4, 18, 4), new CANNON.Vec3(-22, 18, 10))
+  }
+
+  private createNotreDame(): void {
+    const grp   = new THREE.Group()
+    const stone = new THREE.MeshLambertMaterial({ color: 0xe8dcc8 })
+    const dark  = new THREE.MeshLambertMaterial({ color: 0x8a8070 })
+
+    const nave = new THREE.Mesh(new THREE.BoxGeometry(9, 7, 16), stone)
+    nave.position.y = 3.5; nave.castShadow = true; grp.add(nave)
+    const choir = new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), stone)
+    choir.position.set(0, 3, 10); grp.add(choir)
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 4, 6, 4), dark)
+    roof.position.y = 9; roof.rotation.y = Math.PI / 4; grp.add(roof)
+    for (const tx of [-3.5, 3.5]) {
+      const t = new THREE.Mesh(new THREE.BoxGeometry(3, 14, 3), stone)
+      t.position.set(tx, 7, -5.5); grp.add(t)
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 1.3, 4, 6), dark)
+      sp.position.set(tx, 15, -5.5); grp.add(sp)
+    }
+    const ms = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.8, 6, 6), dark)
+    ms.position.set(0, 13, 5); grp.add(ms)
+    const rose = new THREE.Mesh(new THREE.CircleGeometry(1.2, 16),
+      new THREE.MeshBasicMaterial({ color: 0x88bbee }))
+    rose.position.set(0, 6, -7.6); rose.rotation.y = Math.PI; grp.add(rose)
+    const bm = new THREE.MeshLambertMaterial({ color: 0xd0c0a0 })
+    for (const bz of [-2, 2, 6]) for (const s of [-1, 1]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3), bm)
+      b.position.set(s * 5.5, 5, bz); b.rotation.z = s * 0.35; grp.add(b)
+    }
+    grp.position.set(-10, 0, -26)
+    this.scene.add(grp)
+    this.physics.createBox(new CANNON.Vec3(5, 8, 8), new CANNON.Vec3(-10, 8, -26))
+  }
+
+  private createCentralFountain(): void {
+    const stone = new THREE.MeshLambertMaterial({ color: this.C.stone })
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(11, 32),
+      new THREE.MeshLambertMaterial({ color: 0xeeddc8 }))
+    plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.02; this.scene.add(plaza)
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.32, 8, 32), stone)
+    rim.rotation.x = Math.PI / 2; rim.position.y = 0.38; this.scene.add(rim)
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.8, 0.5, 24), stone)
+    base.position.y = 0.25; this.scene.add(base)
+    this.fountainWater = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.5, 3.5, 0.15, 28),
+      new THREE.MeshLambertMaterial({ color: this.C.water, transparent: true, opacity: 0.8 }))
+    this.fountainWater.position.y = 0.55; this.scene.add(this.fountainWater)
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 4.5, 10), stone)
+    col.position.y = 2.75; this.scene.add(col)
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.6, 0.28, 16), stone)
+    upper.position.y = 5.1; this.scene.add(upper)
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), stone)
+    top.position.y = 5.7; this.scene.add(top)
   }
 
   private createStreetLights(): void {
-    const polePositions = [
-      [4, 4], [-4, 4], [4, -4], [-4, -4],
-      [4, -20], [-4, -20], [4, 20], [-4, 20],
-      [20, 4], [-20, 4], [20, -4], [-20, -4],
+    const positions: [number, number][] = [
+      [6,6],[-6,6],[6,-6],[-6,-6],
+      [14,14],[-14,14],[14,-14],[-14,-14],
+      [0,22],[0,-22],[22,0],[-22,0],
+      [22,18],[-22,18],[22,-18],[-22,-18],
+      [36,5],[-36,5],[36,-5],[-36,-5],
+      [5,36],[-5,36],
     ]
-
-    const poleMat = new THREE.MeshLambertMaterial({ color: 0x333333 })
-    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfffbe0 })
-
-    for (const [x, z] of polePositions) {
-      const group = new THREE.Group()
-
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.08, 4, 6),
-        poleMat
-      )
-      pole.position.y = 2
-
-      const arm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.8, 0.06, 0.06),
-        poleMat
-      )
-      arm.position.set(0.4, 4.1, 0)
-
-      const bulb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.15, 8, 8),
-        bulbMat
-      )
-      bulb.position.set(0.8, 4, 0)
-
-      const light = new THREE.PointLight(0xfffbe0, 0.8, 12, 2)
-      light.position.set(0.8, 4, 0)
-
-      group.add(pole, arm, bulb, light)
-      group.position.set(x, 0, z)
-      this.streetLights.add(group)
+    const poleMat = new THREE.MeshLambertMaterial({ color: this.C.lamp })
+    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff5cc })
+    for (const [x, z] of positions) {
+      const grp  = new THREE.Group()
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 5.5, 7), poleMat)
+      pole.position.y = 2.75; grp.add(pole)
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.07, 0.07), poleMat)
+      arm.position.set(0.6, 5.6, 0); grp.add(arm)
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 7, 7), bulbMat)
+      bulb.position.set(1.2, 5.45, 0); grp.add(bulb)
+      const light = new THREE.PointLight(0xfff5cc, 1.1, 16, 2)
+      light.position.set(1.2, 5.4, 0); grp.add(light)
+      grp.position.set(x, 0, z)
+      this.streetLights.add(grp)
     }
   }
 
-  getBounds(): { min: THREE.Vector3; max: THREE.Vector3 } {
-    const half = this.MAP_SIZE / 2
-    return {
-      min: new THREE.Vector3(-half, 0, -half),
-      max: new THREE.Vector3(half, 0, half)
+  private createTrees(): void {
+    const trunkMat = new THREE.MeshLambertMaterial({ color: this.C.trunk })
+    const leafMat  = new THREE.MeshToonMaterial({ color: this.C.leaves })
+    const positions: [number, number][] = [
+      [-8,8],[8,8],[-8,-8],[8,-8],[15,0],[-15,0],[0,15],[0,-14],
+      [12,24],[-12,24],[28,10],[-28,10],[32,-8],[-32,-8],
+      [18,30],[-18,30],[5,40],[-5,40],[40,18],[-40,18],
+    ]
+    for (const [x, z] of positions) {
+      const grp = new THREE.Group()
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.23, 2.4, 7), trunkMat)
+      trunk.position.y = 1.2; grp.add(trunk)
+      const bot = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6, 0), leafMat)
+      bot.position.y = 3.2; bot.castShadow = true; grp.add(bot)
+      const top = new THREE.Mesh(new THREE.DodecahedronGeometry(1.05, 0), leafMat)
+      top.position.y = 4.5; top.castShadow = true; grp.add(top)
+      grp.position.set(x, 0, z); this.scene.add(grp)
     }
+  }
+
+  private createHotAirBalloon(): void {
+    this.balloon = new THREE.Group()
+    const colors = [0xff7090, 0xffc0d0, 0xff7090, 0xffc0d0]
+    for (let i = 0; i < 4; i++) {
+      const p = new THREE.Mesh(
+        new THREE.SphereGeometry(3.2, 4, 10, (i / 4) * Math.PI * 2, Math.PI / 2),
+        new THREE.MeshToonMaterial({ color: colors[i], side: THREE.DoubleSide }))
+      p.scale.y = 1.4; this.balloon.add(p)
+    }
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.16, 6, 20),
+      new THREE.MeshLambertMaterial({ color: 0xbb5577 }))
+    rim.position.y = -4.2; this.balloon.add(rim)
+    const basket = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.5),
+      new THREE.MeshLambertMaterial({ color: 0xc09050 }))
+    basket.position.y = -5.6; this.balloon.add(basket)
+    const ropeMat = new THREE.MeshBasicMaterial({ color: 0x998833 })
+    for (const [rx, rz] of [[1,1],[-1,1],[1,-1],[-1,-1]]) {
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 3.8, 4), ropeMat)
+      rope.position.set(rx * 1.3, -3.5, rz * 1.3); this.balloon.add(rope)
+    }
+    this.balloon.position.set(14, 32, 0); this.scene.add(this.balloon)
+  }
+
+  getBounds() {
+    const h = this.MAP_SIZE / 2
+    return { min: new THREE.Vector3(-h, 0, -h), max: new THREE.Vector3(h, 0, h) }
   }
 
   getIngredientSpawnPositions(): THREE.Vector3[] {
     return [
-      new THREE.Vector3(15, 0, 8),
-      new THREE.Vector3(-12, 0, 15),
-      new THREE.Vector3(8, 0, -18),
-      new THREE.Vector3(-20, 0, -10),
-      new THREE.Vector3(25, 0, -5)
+      new THREE.Vector3(  0,  4.1, -20),  
+      new THREE.Vector3(-46,  0.5,  10),  
+      new THREE.Vector3( 30,  0.5, -22),  
+      new THREE.Vector3(-30,  0.5,  32),  
+      new THREE.Vector3( 15,  0.5, -28),  
     ]
   }
 
   getCatPatrolRoutes(): THREE.Vector3[][] {
     return [
-      [
-        new THREE.Vector3(5, 0.5, 5),
-        new THREE.Vector3(15, 0.5, 5),
-        new THREE.Vector3(15, 0.5, 15),
-        new THREE.Vector3(5, 0.5, 15)
-      ],
-      [
-        new THREE.Vector3(-5, 0.5, -5),
-        new THREE.Vector3(-15, 0.5, -5),
-        new THREE.Vector3(-15, 0.5, -15),
-        new THREE.Vector3(-5, 0.5, -15)
-      ],
-      [
-        new THREE.Vector3(20, 0.5, 0),
-        new THREE.Vector3(20, 0.5, -15),
-        new THREE.Vector3(10, 0.5, -15),
-        new THREE.Vector3(10, 0.5, 0)
-      ]
+      [new THREE.Vector3(10,0.5,15), new THREE.Vector3(30,0.5,15), new THREE.Vector3(30,0.5,35), new THREE.Vector3(10,0.5,35)],
+      [new THREE.Vector3(-10,0.5,-15), new THREE.Vector3(-30,0.5,-15), new THREE.Vector3(-30,0.5,-25), new THREE.Vector3(-10,0.5,-25)],
+      [new THREE.Vector3(12,0.5,0), new THREE.Vector3(12,0.5,-22), new THREE.Vector3(-12,0.5,-22), new THREE.Vector3(-12,0.5,0)],
     ]
   }
+
+  getAmbushPositions(): THREE.Vector3[] { return this.ambushSpots }
 }

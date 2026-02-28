@@ -15,36 +15,32 @@ export class GameEngine {
   private timer: THREE.Timer
 
   private physics: PhysicsWorld
-
   private rat!: Rat
   private cats: Cat[] = []
   private ingredients: Ingredient[] = []
-
   private map!: ParisMap
-
   private hud: HUD
-
   private sound!: SoundManager
 
   private gameState: 'intro' | 'playing' | 'win' | 'lose' = 'intro'
-  private timeLeft = 180
-  private score = 0
+  private timeLeft      = 120
+  private totalGameTime = 120
+  private score         = 0
   private collectedCount = 0
+  private difficulty    = 1.0
 
-  private cameraYaw = 0
-  private cameraPitch = 0.35
+  private cameraYaw      = 0
+  private cameraPitch    = 0.35
   private cameraDistance = 7
-  private isDragging = false
-  private lastMouseX = 0
-  private lastMouseY = 0
+  private isDragging     = false
+  private lastMouseX     = 0
+  private lastMouseY     = 0
 
   private collectParticles: THREE.Points[] = []
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      powerPreference: 'high-performance'
+      canvas, antialias: true, powerPreference: 'high-performance'
     })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.setSize(window.innerWidth, window.innerHeight)
@@ -57,43 +53,37 @@ export class GameEngine {
     this.scene.fog = new THREE.Fog(0x2a1a0a, 30, 100)
     this.scene.background = new THREE.Color(0x1a1008)
 
-    this.camera = new THREE.PerspectiveCamera(
-      65, window.innerWidth / window.innerHeight, 0.1, 200
-    )
-
-    this.timer = new THREE.Timer()
-
+    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200)
+    this.timer   = new THREE.Timer()
     this.physics = new PhysicsWorld()
-    this.hud = new HUD()
+    this.hud     = new HUD()
 
     this.setupLighting()
     this.setupEventListeners()
   }
 
   private setupLighting(): void {
-    const ambient = new THREE.AmbientLight(0xffd0a0, 0.6)
-    this.scene.add(ambient)
+    this.scene.add(new THREE.AmbientLight(0xffd0a0, 0.6))
 
     const sun = new THREE.DirectionalLight(0xffbb66, 1.5)
     sun.position.set(30, 50, 20)
     sun.castShadow = true
-    sun.shadow.mapSize.width = 2048
+    sun.shadow.mapSize.width  = 2048
     sun.shadow.mapSize.height = 2048
-    sun.shadow.camera.near = 0.5
-    sun.shadow.camera.far = 150
-    sun.shadow.camera.left = -60
-    sun.shadow.camera.right = 60
-    sun.shadow.camera.top = 60
+    sun.shadow.camera.near   = 0.5
+    sun.shadow.camera.far    = 150
+    sun.shadow.camera.left   = -60
+    sun.shadow.camera.right  =  60
+    sun.shadow.camera.top    =  60
     sun.shadow.camera.bottom = -60
-    sun.shadow.bias = -0.001
+    sun.shadow.bias          = -0.001
     this.scene.add(sun)
 
     const fill = new THREE.DirectionalLight(0x8899ff, 0.3)
     fill.position.set(-20, 15, -20)
     this.scene.add(fill)
 
-    const hemi = new THREE.HemisphereLight(0xff9933, 0x223311, 0.4)
-    this.scene.add(hemi)
+    this.scene.add(new THREE.HemisphereLight(0xff9933, 0x223311, 0.4))
   }
 
   private setupEventListeners(): void {
@@ -105,19 +95,14 @@ export class GameEngine {
 
     const canvas = this.renderer.domElement
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) {
-        this.isDragging = true
-        this.lastMouseX = e.clientX
-        this.lastMouseY = e.clientY
-      }
+      if (e.button === 2) { this.isDragging = true; this.lastMouseX = e.clientX; this.lastMouseY = e.clientY }
     })
     window.addEventListener('mousemove', (e) => {
       if (this.isDragging) {
         this.cameraYaw   -= (e.clientX - this.lastMouseX) * 0.005
-        this.cameraPitch = Math.max(0.1, Math.min(1.0,
-          this.cameraPitch + (e.clientY - this.lastMouseY) * 0.005))
-        this.lastMouseX = e.clientX
-        this.lastMouseY = e.clientY
+        this.cameraPitch  = Math.max(0.1, Math.min(1.0, this.cameraPitch + (e.clientY - this.lastMouseY) * 0.005))
+        this.lastMouseX   = e.clientX
+        this.lastMouseY   = e.clientY
       }
     })
     window.addEventListener('mouseup', () => { this.isDragging = false })
@@ -128,14 +113,11 @@ export class GameEngine {
   }
 
   async init(): Promise<void> {
-    // Sound manager (ZzFX)
     this.sound = new SoundManager()
 
-    // Map
     this.map = new ParisMap(this.scene, this.physics)
     this.map.build()
 
-    // Rat
     this.rat = new Rat(this.physics)
     this.scene.add(this.rat.mesh)
 
@@ -147,64 +129,59 @@ export class GameEngine {
       this.scene.add(ing.mesh)
     }
 
-    // Cats
+    // Patrol cats — 3 from map routes
     for (const route of this.map.getCatPatrolRoutes()) {
       const cat = new Cat(this.physics, route)
       this.cats.push(cat)
       this.scene.add(cat.mesh)
     }
 
-    this.createCollectParticlePool()
 
+
+    // Ambush cats — pace a small loop near each archway
+    for (const pos of this.map.getAmbushPositions()) {
+      const r    = 0.9
+      const loop = [
+        new THREE.Vector3(pos.x + r, 0.5, pos.z),
+        new THREE.Vector3(pos.x,     0.5, pos.z + r),
+        new THREE.Vector3(pos.x - r, 0.5, pos.z),
+        new THREE.Vector3(pos.x,     0.5, pos.z - r),
+      ]
+      const ambush = new Cat(this.physics, loop)
+      ambush.difficultyMult = 1.3
+      this.cats.push(ambush)
+      this.scene.add(ambush.mesh)
+    }
+
+    this.createCollectParticlePool()
     this.playIntroCameraAnimation()
   }
 
   private playIntroCameraAnimation(): void {
     const startPos = { x: 20, y: 15, z: 20 }
-    const endPos   = { x: 0,  y: 8,  z: 12 }
-
+    const endPos   = { x:  0, y:  8, z: 12 }
     this.camera.position.set(startPos.x, startPos.y, startPos.z)
     this.camera.lookAt(0, 0, 0)
-
     new TWEEN.Tween(startPos)
       .to(endPos, 3000)
       .easing(TWEEN.Easing.Cubic.InOut)
-      .onUpdate(() => {
-        this.camera.position.set(startPos.x, startPos.y, startPos.z)
-        this.camera.lookAt(0, 0, 0)
-      })
+      .onUpdate(() => { this.camera.position.set(startPos.x, startPos.y, startPos.z); this.camera.lookAt(0, 0, 0) })
       .start()
   }
 
   private playCollectAnimation(position: THREE.Vector3, color: number): void {
-    // Scale up a sphere then fade it out
     const geo = new THREE.SphereGeometry(0.3, 8, 8)
-    const mat = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.8,
-      wireframe: true
-    })
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, wireframe: true })
     const ring = new THREE.Mesh(geo, mat)
     ring.position.copy(position)
     this.scene.add(ring)
-
     const scaleObj = { s: 0.3, opacity: 0.8 }
     new TWEEN.Tween(scaleObj)
       .to({ s: 3.0, opacity: 0 }, 600)
       .easing(TWEEN.Easing.Quadratic.Out)
-      .onUpdate(() => {
-        ring.scale.setScalar(scaleObj.s)
-        mat.opacity = scaleObj.opacity
-      })
-      .onComplete(() => {
-        this.scene.remove(ring)
-        geo.dispose()
-        mat.dispose()
-      })
+      .onUpdate(() => { ring.scale.setScalar(scaleObj.s); mat.opacity = scaleObj.opacity })
+      .onComplete(() => { this.scene.remove(ring); geo.dispose(); mat.dispose() })
       .start()
-
-    // Camera shake
     this.playCameraShake(0.15, 300)
   }
 
@@ -233,12 +210,9 @@ export class GameEngine {
 
   private createCollectParticlePool(): void {
     for (let i = 0; i < 5; i++) {
-      const count = 30
       const geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3))
-      const mat = new THREE.PointsMaterial({
-        color: 0xFFD700, size: 0.12, transparent: true, opacity: 0, sizeAttenuation: true
-      })
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(30 * 3), 3))
+      const mat = new THREE.PointsMaterial({ color: 0xFFD700, size: 0.12, transparent: true, opacity: 0, sizeAttenuation: true })
       const pts = new THREE.Points(geo, mat)
       pts.visible = false
       this.scene.add(pts)
@@ -250,31 +224,23 @@ export class GameEngine {
     const pts = this.collectParticles.find(p => !p.visible)
     if (!pts) return
     const mat = pts.material as THREE.PointsMaterial
-    mat.color.set(color)
-    mat.opacity = 1
-    pts.position.copy(position)
-    pts.visible = true
-
-    const posArr = pts.geometry.attributes.position.array as Float32Array
+    mat.color.set(color); mat.opacity = 1
+    pts.position.copy(position); pts.visible = true
+    const posArr    = pts.geometry.attributes.position.array as Float32Array
     const velocities: THREE.Vector3[] = []
     for (let i = 0; i < 30; i++) {
-      posArr[i * 3] = posArr[i * 3 + 1] = posArr[i * 3 + 2] = 0
-      velocities.push(new THREE.Vector3(
-        (Math.random() - 0.5) * 6,
-        Math.random() * 5 + 2,
-        (Math.random() - 0.5) * 6
-      ))
+      posArr[i*3] = posArr[i*3+1] = posArr[i*3+2] = 0
+      velocities.push(new THREE.Vector3((Math.random()-0.5)*6, Math.random()*5+2, (Math.random()-0.5)*6))
     }
     pts.geometry.attributes.position.needsUpdate = true
-
     let elapsed = 0
     const animate = () => {
       elapsed += 0.016
       if (elapsed > 1) { pts.visible = false; return }
       for (let i = 0; i < 30; i++) {
-        posArr[i * 3]     += velocities[i].x * 0.016
-        posArr[i * 3 + 1] += velocities[i].y * 0.016 - 9.8 * elapsed * 0.016
-        posArr[i * 3 + 2] += velocities[i].z * 0.016
+        posArr[i*3]   += velocities[i].x * 0.016
+        posArr[i*3+1] += velocities[i].y * 0.016 - 9.8 * elapsed * 0.016
+        posArr[i*3+2] += velocities[i].z * 0.016
       }
       pts.geometry.attributes.position.needsUpdate = true
       mat.opacity = 1 - elapsed
@@ -303,11 +269,9 @@ export class GameEngine {
         this.score += 100
         this.hud.collectIngredient(i)
         this.hud.updateScore(this.score)
-
         this.sound.playCollect()
         this.playCollectAnimation(ing.data.position, ing.data.color)
         this.burstParticles(ing.data.position, ing.data.color)
-
         const msgs = [
           `🧀 Parfait! ${ing.data.name} trouvé!`,
           `🐀 Magnifique! ${ing.data.name} dans la poche!`,
@@ -329,11 +293,16 @@ export class GameEngine {
         this.rat.takeDamage()
         this.hud.updateLives(this.rat.state.lives)
         this.hud.showMessage('🙀 MON DIEU! Attention au chat!', 2000)
-
         this.sound.playDamage()
         this.sound.playCatMeow()
         this.playDamageFlash()
         this.playCameraShake(0.3, 400)
+
+        for (const other of this.cats) {
+          if (other.getPosition().distanceTo(ratPos) < 20) {
+            other.triggerAlert(ratPos)
+          }
+        }
 
         if (this.rat.state.lives <= 0) this.lose()
       }
@@ -350,16 +319,11 @@ export class GameEngine {
   }
 
   private win(): void {
-    this.gameState = 'win'
-    this.score += Math.floor(this.timeLeft) * 5
+    this.gameState  = 'win'
+    this.score     += Math.floor(this.timeLeft) * 5
     this.sound.playWin()
-
-    const target = this.rat.getPosition()
-    const tweenObj = {
-      x: this.camera.position.x,
-      y: this.camera.position.y,
-      z: this.camera.position.z
-    }
+    const target   = this.rat.getPosition()
+    const tweenObj = { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z }
     new TWEEN.Tween(tweenObj)
       .to({ x: target.x + 2, y: target.y + 3, z: target.z + 2 }, 1500)
       .easing(TWEEN.Easing.Cubic.InOut)
@@ -374,9 +338,7 @@ export class GameEngine {
     this.hud.showLose()
   }
 
-  startMenuMusic(): void {
-    this.sound.playMenuMusic()
-  }
+  startMenuMusic(): void { this.sound.playMenuMusic() }
 
   start(): void {
     this.gameState = 'playing'
@@ -386,10 +348,8 @@ export class GameEngine {
 
   private loop = (): void => {
     requestAnimationFrame(this.loop)
-
     this.timer.update()
     const dt = Math.min(this.timer.getDelta(), 0.05)
-
     TWEEN.update()
 
     if (this.gameState !== 'playing') {
@@ -401,8 +361,13 @@ export class GameEngine {
     this.hud.updateTimer(this.timeLeft)
     if (this.timeLeft <= 0) { this.lose(); return }
 
+    // Difficulty ramps 1.0 → 1.6 as time runs out
+    this.difficulty = 1.0 + (1 - this.timeLeft / this.totalGameTime) * 0.6
+    for (const cat of this.cats) cat.difficultyMult = this.difficulty
+
     this.physics.step(dt)
     this.rat.update(dt, this.cameraYaw)
+    this.map.update(this.timer.getElapsed())
     for (const ing of this.ingredients) ing.update(dt)
     this.checkEnemyCollisions()
     this.checkCollections()
