@@ -22,7 +22,7 @@ export class GameEngine {
   private hud: HUD
   private sound!: SoundManager
 
-  private gameState: 'intro' | 'playing' | 'win' | 'lose' = 'intro'
+  private gameState: 'intro' | 'playing' | 'paused' | 'win' | 'lose' = 'intro'
   private timeLeft      = 120
   private totalGameTime = 120
   private score         = 0
@@ -110,6 +110,28 @@ export class GameEngine {
     canvas.addEventListener('wheel', (e) => {
       this.cameraDistance = Math.max(3, Math.min(15, this.cameraDistance + e.deltaY * 0.01))
     })
+
+    // ESC = pause / resume
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (this.gameState === 'playing') this.pause()
+        else if (this.gameState === 'paused') this.resume()
+      }
+    })
+
+    // Pause button in HUD
+    document.getElementById('pause-btn')?.addEventListener('click', () => {
+      if (this.gameState === 'playing') this.pause()
+      else if (this.gameState === 'paused') this.resume()
+    })
+    document.getElementById('restart-session-btn')?.addEventListener('click', () => this.restartSession())
+
+    // Resume button inside pause screen
+    document.getElementById('resume-btn')?.addEventListener('click', () => this.resume())
+    document.getElementById('lose-retry-btn')?.addEventListener('click', () => this.restartSession())
+
+    // Quit button inside pause screen
+    document.getElementById('quit-btn')?.addEventListener('click', () => this.quit())
   }
 
   async init(): Promise<void> {
@@ -136,8 +158,6 @@ export class GameEngine {
       this.scene.add(cat.mesh)
     }
 
-
-
     // Ambush cats — pace a small loop near each archway
     for (const pos of this.map.getAmbushPositions()) {
       const r    = 0.9
@@ -156,6 +176,162 @@ export class GameEngine {
     this.createCollectParticlePool()
     this.playIntroCameraAnimation()
   }
+
+  // ===== PAUSE / RESUME / QUIT =====
+
+  pause(): void {
+    if (this.gameState !== 'playing') return
+    this.gameState = 'paused'
+    this.sound.pauseGameMusic()
+    document.getElementById('pause-screen')!.style.display = 'flex'
+    const pauseBtn = document.getElementById('pause-btn')!
+    pauseBtn.textContent = '▶'
+    pauseBtn.title = 'Reprendre (ESC)'
+  }
+
+  resume(): void {
+    if (this.gameState !== 'paused') return
+    this.gameState = 'playing'
+    this.sound.resumeGameMusic()
+    document.getElementById('pause-screen')!.style.display = 'none'
+    const pauseBtn = document.getElementById('pause-btn')!
+    pauseBtn.textContent = '⏸'
+    pauseBtn.title = 'Pause (ESC)'
+  }
+
+quit(): void {
+  document.getElementById('pause-screen')!.style.display = 'none'
+
+  // Reset game state silently
+  this.gameState      = 'intro'
+  this.timeLeft       = this.totalGameTime
+  this.score          = 0
+  this.collectedCount = 0
+  this.difficulty     = 1.0
+
+  this.rat.reset()
+  for (const cat of this.cats)        cat.resetToPatrol()
+  for (let i = 0; i < this.ingredients.length; i++) {
+    this.ingredients[i].resetIngredient()
+    document.getElementById(`slot-${i}`)?.classList.remove('collected')
+  }
+
+  this.hud.updateLives(3)
+  this.hud.updateScore(0)
+  this.hud.updateTimer(this.totalGameTime)
+
+  // Hide pause button
+  const pauseBtn = document.getElementById('pause-btn')!
+  pauseBtn.style.display = 'none'
+  pauseBtn.textContent = '⏸'
+
+  // Stop game music, go back to menu music
+  this.sound.pauseGameMusic()
+  this.sound.playMenuMusic()
+
+  // Show splash screen again
+  const splash = document.getElementById('splash-screen')!
+  splash.style.display = 'block'
+  splash.style.opacity = '0'
+  splash.style.transition = 'opacity 0.5s'
+  requestAnimationFrame(() => {
+    splash.style.opacity = '1'
+  })
+}
+
+  restartSession(): void {
+    // Hide all overlays
+    document.getElementById('pause-screen')!.style.display = 'none'
+    document.getElementById('lose-screen')!.style.display = 'none'
+    document.getElementById('win-screen')!.style.display = 'none'
+    document.getElementById('damage-overlay')!.style.opacity = '0'
+
+    // Reset game variables
+    this.timeLeft       = this.totalGameTime
+    this.score          = 0
+    this.collectedCount = 0
+    this.difficulty     = 1.0
+
+    // Reset rat
+    this.rat.reset()
+
+    // Reset all cats back to patrol at their first patrol point
+    for (const cat of this.cats) {
+      cat.resetToPatrol()
+    }
+
+    // Reset all ingredients
+    for (let i = 0; i < this.ingredients.length; i++) {
+      this.ingredients[i].resetIngredient()
+      // Reset HUD inventory slot
+      const slot = document.getElementById(`slot-${i}`)
+      if (slot) slot.classList.remove('collected')
+    }
+
+    // Reset HUD
+    this.hud.updateLives(3)
+    this.hud.updateScore(0)
+    this.hud.updateTimer(this.totalGameTime)
+
+    // Reset pause button
+    const pauseBtn = document.getElementById('pause-btn')!
+    pauseBtn.textContent = '⏸'
+    pauseBtn.title = 'Pause (ESC)'
+    pauseBtn.style.display = 'flex'
+
+    // Resume music and game
+    this.sound.resumeGameMusic()
+    this.gameState = 'playing'
+  }
+
+  // ===== LIFECYCLE =====
+
+  startMenuMusic(): void { this.sound.playMenuMusic() }
+
+  start(): void {
+    this.gameState = 'playing'
+    this.sound.playGameMusic()
+    // Show pause button now that the game has started
+    const pauseBtn = document.getElementById('pause-btn')
+    if (pauseBtn) pauseBtn.style.display = 'flex'
+    this.loop()
+  }
+
+  private loop = (): void => {
+    requestAnimationFrame(this.loop)
+    this.timer.update()
+    const dt = Math.min(this.timer.getDelta(), 0.05)
+    TWEEN.update()
+
+    // Keep rendering even when paused (scene stays visible, frozen)
+    if (this.gameState !== 'playing') {
+      this.renderer.render(this.scene, this.camera)
+      return
+    }
+
+    this.timeLeft -= dt
+    this.hud.updateTimer(this.timeLeft)
+    if (this.timeLeft <= 0) { this.lose(); return }
+
+    // Difficulty ramps 1.0 → 1.6 as time runs out
+    this.difficulty = 1.0 + (1 - this.timeLeft / this.totalGameTime) * 0.6
+    for (const cat of this.cats) cat.difficultyMult = this.difficulty
+
+    this.physics.step(dt)
+    this.rat.update(dt, this.cameraYaw)
+    this.map.update(this.timer.getElapsed())
+    for (const ing of this.ingredients) ing.update(dt)
+    this.checkEnemyCollisions()
+    this.checkCollections()
+    this.updateCamera()
+    this.updateMinimap()
+    this.score += dt * 0.5
+    this.hud.updateScore(Math.floor(this.score))
+
+    this.renderer.render(this.scene, this.camera)
+  }
+
+  // ===== PRIVATE HELPERS =====
 
   private playIntroCameraAnimation(): void {
     const startPos = { x: 20, y: 15, z: 20 }
@@ -288,13 +464,18 @@ export class GameEngine {
   private checkEnemyCollisions(): void {
     const ratPos = this.rat.getPosition()
     for (const cat of this.cats) {
-      const caught = cat.update(0.016, ratPos)
-      if (caught && !this.rat.state.isInvincible) {
+      const result = cat.update(0.016, ratPos)
+
+      // 🔊 Cat just spotted the rat — play meow
+      if (result.spotted) {
+        this.sound.playCatMeow()
+      }
+
+      if (result.caught && !this.rat.state.isInvincible) {
         this.rat.takeDamage()
         this.hud.updateLives(this.rat.state.lives)
         this.hud.showMessage('🙀 MON DIEU! Attention au chat!', 2000)
         this.sound.playDamage()
-        this.sound.playCatMeow()
         this.playDamageFlash()
         this.playCameraShake(0.3, 400)
 
@@ -322,6 +503,9 @@ export class GameEngine {
     this.gameState  = 'win'
     this.score     += Math.floor(this.timeLeft) * 5
     this.sound.playWin()
+    // Hide pause button on win
+    const pauseBtn = document.getElementById('pause-btn')
+    if (pauseBtn) pauseBtn.style.display = 'none'
     const target   = this.rat.getPosition()
     const tweenObj = { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z }
     new TWEEN.Tween(tweenObj)
@@ -335,48 +519,10 @@ export class GameEngine {
   private lose(): void {
     this.gameState = 'lose'
     this.sound.playLose()
+    // Hide pause button on lose
+    const pauseBtn = document.getElementById('pause-btn')
+    if (pauseBtn) pauseBtn.style.display = 'none'
     this.hud.showLose()
-  }
-
-  startMenuMusic(): void { this.sound.playMenuMusic() }
-
-  start(): void {
-    this.gameState = 'playing'
-    this.sound.playGameMusic()
-    this.loop()
-  }
-
-  private loop = (): void => {
-    requestAnimationFrame(this.loop)
-    this.timer.update()
-    const dt = Math.min(this.timer.getDelta(), 0.05)
-    TWEEN.update()
-
-    if (this.gameState !== 'playing') {
-      this.renderer.render(this.scene, this.camera)
-      return
-    }
-
-    this.timeLeft -= dt
-    this.hud.updateTimer(this.timeLeft)
-    if (this.timeLeft <= 0) { this.lose(); return }
-
-    // Difficulty ramps 1.0 → 1.6 as time runs out
-    this.difficulty = 1.0 + (1 - this.timeLeft / this.totalGameTime) * 0.6
-    for (const cat of this.cats) cat.difficultyMult = this.difficulty
-
-    this.physics.step(dt)
-    this.rat.update(dt, this.cameraYaw)
-    this.map.update(this.timer.getElapsed())
-    for (const ing of this.ingredients) ing.update(dt)
-    this.checkEnemyCollisions()
-    this.checkCollections()
-    this.updateCamera()
-    this.updateMinimap()
-    this.score += dt * 0.5
-    this.hud.updateScore(Math.floor(this.score))
-
-    this.renderer.render(this.scene, this.camera)
   }
 
   setARCamera(camera: THREE.PerspectiveCamera): void { this.camera = camera }
