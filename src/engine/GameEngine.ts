@@ -301,13 +301,15 @@ restartSession(): void {
   private loop = (): void => {
     requestAnimationFrame(this.loop)
     
+    
+   this.timer.update()
+    const dt = Math.min(this.timer.getDelta(), 0.05)
+    TWEEN.update()
+
     if (this.isPaused || this.gameState === 'lose' || this.gameState === 'win') {
       this.renderer.render(this.scene, this.camera)
       return
     }
-    this.timer.update()
-    const dt = Math.min(this.timer.getDelta(), 0.05)
-    TWEEN.update()
 
     if (this.gameState !== 'playing') {
       this.renderer.render(this.scene, this.camera)
