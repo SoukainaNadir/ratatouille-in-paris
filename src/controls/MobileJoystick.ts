@@ -49,6 +49,7 @@ export class MobileJoystick {
       inset:         '0',
       zIndex:        '50',
       pointerEvents: 'none',
+      display:       'none',
     })
 
 
