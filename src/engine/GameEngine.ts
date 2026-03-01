@@ -90,7 +90,7 @@ export class GameEngine {
   }
 
 
-  private setupEventListeners(): void {
+private setupEventListeners(): void {
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight
       this.camera.updateProjectionMatrix()
@@ -98,33 +98,37 @@ export class GameEngine {
     })
 
     const canvas = this.renderer.domElement
-    canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2) {
-        this.isDragging = true
-        this.lastMouseX = e.clientX
-        this.lastMouseY = e.clientY
+
+    // Clic gauche sur le canvas = activer la rotation libre
+    canvas.addEventListener('click', () => {
+      canvas.requestPointerLock()
+    })
+
+    // Quand pointer lock est actif, la souris contrôle la caméra librement
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement === canvas) {
+        this.cameraYaw   -= e.movementX * 0.003
+        this.cameraPitch  = Math.max(-1.4, Math.min(1.4, this.cameraPitch + e.movementY * 0.003))
       }
     })
-    window.addEventListener('mousemove', (e) => {
-      if (this.isDragging) {
-        this.cameraYaw   -= (e.clientX - this.lastMouseX) * 0.005
-        this.cameraPitch  = Math.max(0.1, Math.min(1.0, this.cameraPitch + (e.clientY - this.lastMouseY) * 0.005))
-        this.lastMouseX   = e.clientX
-        this.lastMouseY   = e.clientY
+
+    // ESC désactive automatiquement le pointer lock
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (document.pointerLockElement === canvas) {
+          document.exitPointerLock()
+        } else {
+          if (this.gameState === 'playing') this.pause()
+          else if (this.gameState === 'paused') this.resume()
+        }
       }
     })
-    window.addEventListener('mouseup', () => { this.isDragging = false })
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault())
+
     canvas.addEventListener('wheel', (e) => {
       this.cameraDistance = Math.max(3, Math.min(15, this.cameraDistance + e.deltaY * 0.01))
     })
 
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (this.gameState === 'playing') this.pause()
-        else if (this.gameState === 'paused') this.resume()
-      }
-    })
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault())
 
     document.getElementById('pause-btn')?.addEventListener('click', () => {
       if (this.gameState === 'playing') this.pause()
@@ -141,7 +145,6 @@ export class GameEngine {
       if (btn) btn.textContent = this.sound?.isEnabled() ? '🔊' : '🔇'
     }
   }
-
 
   async init(): Promise<void> {
     this.sound = new SoundManager()
@@ -317,7 +320,8 @@ export class GameEngine {
       const { dx, dz } = this.joystick.getMovement()
       const cam = this.joystick.consumeCameraInput()
       this.cameraYaw   += cam.dyaw
-      this.cameraPitch  = Math.max(0.1, Math.min(1.0, this.cameraPitch + cam.dpitch))
+      this.cameraPitch  = Math.max(-1.4, Math.min(1.4, this.cameraPitch + cam.dpitch))
+
       this.rat.setJoystickInput(dx, dz)
     }
 
@@ -339,9 +343,11 @@ this.rat.setIndoor(this.map.isInsideBuilding(ratPos.x, ratPos.z))
 
   private updateCamera(): void {
     const ratPos = this.rat.getPosition()
-    const x = ratPos.x + Math.sin(this.cameraYaw) * Math.cos(this.cameraPitch) * this.cameraDistance
+    // Ajoute Math.PI pour que la caméra soit DERRIÈRE le rat
+    const yaw = this.cameraYaw + Math.PI
+    const x = ratPos.x + Math.sin(yaw) * Math.cos(this.cameraPitch) * this.cameraDistance
     const y = ratPos.y + Math.sin(this.cameraPitch) * this.cameraDistance
-    const z = ratPos.z + Math.cos(this.cameraYaw) * Math.cos(this.cameraPitch) * this.cameraDistance
+    const z = ratPos.z + Math.cos(yaw) * Math.cos(this.cameraPitch) * this.cameraDistance
     this.camera.position.lerp(new THREE.Vector3(x, y, z), 0.08)
     this.camera.lookAt(ratPos.x, ratPos.y + 0.5, ratPos.z)
   }

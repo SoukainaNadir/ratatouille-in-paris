@@ -289,18 +289,19 @@ const FUR_DK = 0x3f4b59
     const moving = len > 0.05
     this.state.isRunning = moving
 
-    if (moving) {
-      const cos = Math.cos(cameraYaw), sin = Math.sin(cameraYaw)
-      const wx = dx * cos - dz * sin
-      const wz = dx * sin + dz * cos
-      const wlen = Math.sqrt(wx*wx + wz*wz)
-      this.body.velocity.x = (wx / wlen) * this.moveSpeed
-      this.body.velocity.z = (wz / wlen) * this.moveSpeed
-      this.mesh.rotation.y = THREE.MathUtils.lerp(this.mesh.rotation.y, Math.atan2(wx, wz), 0.18)
-    } else {
-      this.body.velocity.x *= 0.7
-      this.body.velocity.z *= 0.7
-    }
+if (moving) {
+  const cos = Math.cos(cameraYaw)
+  const sin = Math.sin(cameraYaw)
+  const wx = -sin * dz - cos * dx
+  const wz = -cos * dz + sin * dx
+  const wlen = Math.sqrt(wx*wx + wz*wz)
+  this.body.velocity.x = (wx / wlen) * this.moveSpeed
+  this.body.velocity.z = (wz / wlen) * this.moveSpeed
+  this.mesh.rotation.y = THREE.MathUtils.lerp(this.mesh.rotation.y, Math.atan2(wx, wz), 0.18)
+} else {
+  this.body.velocity.x *= 0.7
+  this.body.velocity.z *= 0.7
+}
 
     this.mesh.position.set(this.body.position.x, this.body.position.y - 0.15, this.body.position.z)
     this.animLegs()

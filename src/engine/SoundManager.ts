@@ -146,9 +146,10 @@ export class SoundManager {
     setTimeout(() => this.zzfx(1, 0, 1047, 0, 0.02, 0.2,  0, 3),   200)
   }
 
-  playDamage(): void {
-    this.zzfx(2, 0.3, 80, 0, 0, 0.3, 1, 0.5, -4, 0, 0, 0, 0, 0.8)
-  }
+playDamage(): void {
+    this.zzfx(1.5, 0.1, 900, 0, 0.02, 0.15, 0, 2, -8)
+    setTimeout(() => this.zzfx(1, 0.2, 120, 0, 0, 0.2, 1, 0.5, -2, 0, 0, 0, 0, 0.5), 80)
+}
 
   playWin(): void {
     this.stopMusic()
