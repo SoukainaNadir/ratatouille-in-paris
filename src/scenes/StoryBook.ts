@@ -8,31 +8,31 @@ interface Slide {
 
 const SLIDES: Slide[] = [
   {
-    image: '/story1.png',
+    image: `${import.meta.env.BASE_URL}story1.png`,
     title: 'Le restaurant de Gusteau ferme ce soir à minuit.',
     subtitle: 'Des années de gloire... sur le point de s\'éteindre pour toujours.',
     align: 'bottom'
   },
   {
-    image: '/story2.png',
+    image: `${import.meta.env.BASE_URL}story2.png`,
     title: 'La Ratatouille Impériale — la seule recette qui peut le sauver.',
     subtitle: '5 ingrédients légendaires, éparpillés aux quatre coins de Paris.',
     align: 'bottom'
   },
   {
-    image: '/story3.png',
+    image: `${import.meta.env.BASE_URL}story3.png`,
     title: 'Quelqu\'un doit les récupérer.',
     subtitle: 'Tu connais ces toits comme ta poche. C\'est l\'heure de prouver ton talent.',
     align: 'bottom'
   },
   {
-    image: '/story4.png',
+    image: `${import.meta.env.BASE_URL}story4.png`,
     title: 'Mais Skinner a lâché ses chats dans toute la ville.',
     subtitle: 'Ils patrouillent. Ils traquent. Un seul contact — et c\'est terminé.',
     align: 'top'
   },
   {
-    image: '/story5.png',
+    image: `${import.meta.env.BASE_URL}story5.png`,
     title: '2 minutes. C\'est tout ce qu\'il te reste.',
     subtitle: 'C\'est maintenant ou jamais, Chef.',
     align: 'bottom'
