@@ -3,7 +3,7 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 import glsl from 'vite-plugin-glsl';
 
 export default defineConfig({
-    base: "./ratatouille-in-paris/",
+    base: "/ratatouille-in-paris/",
     clearScreen: false,
     optimizeDeps: {
         esbuildOptions: {

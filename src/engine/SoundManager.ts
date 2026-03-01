@@ -17,15 +17,16 @@ export class SoundManager {
   constructor() {
     this.listener = new THREE.AudioListener()
 
-    this.menuMusic = new Audio('/sounds/Parisian.mp3')
+    this.menuMusic = new Audio(`${import.meta.env.BASE_URL}sounds/Parisian.mp3`)
+
     this.menuMusic.loop = true
     this.menuMusic.volume = 0.6
 
-    this.gameMusic = new Audio('/sounds/Meanwhile in Bavaria.mp3')
+this.gameMusic = new Audio(`${import.meta.env.BASE_URL}sounds/Meanwhile in Bavaria.mp3`)
     this.gameMusic.loop = true
     this.gameMusic.volume = 0.5
 
-    this.winSound = new Audio('/sounds/you-win-sequence.mp3')
+this.winSound  = new Audio(`${import.meta.env.BASE_URL}sounds/you-win-sequence.mp3`)
     this.winSound.volume = 0.8
     const unlock = () => {
       this.ensureContext()
@@ -48,7 +49,7 @@ export class SoundManager {
     if (this.meowBuffer || this.meowLoading || !this.ctx) return
     this.meowLoading = true
     try {
-      const resp = await fetch('/sounds/412017__skymary__cat-meow-short.wav')
+const resp = await fetch(`${import.meta.env.BASE_URL}sounds/412017__skymary__cat-meow-short.wav`)
       const arrayBuffer = await resp.arrayBuffer()
       this.meowBuffer = await this.ctx.decodeAudioData(arrayBuffer)
       console.log('🐱 Meow buffer loaded for spatial audio')
