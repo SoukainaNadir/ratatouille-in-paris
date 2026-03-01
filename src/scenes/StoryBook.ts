@@ -30,7 +30,7 @@ const SLIDES: Slide[] = [
     title: 'Mais Skinner a lâché ses chats dans toute la ville.',
     subtitle: 'Ils patrouillent. Ils traquent. Un seul contact — et c\'est terminé.',
     align: 'top'
-  },
+  }, 
   {
     image: `${BASE}story5.png`,
     title: '2 minutes. C\'est tout ce qu\'il te reste.',
