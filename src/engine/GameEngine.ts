@@ -34,11 +34,10 @@ export class GameEngine {
   private cameraYaw      = 0
   private cameraPitch    = 0.35
   private cameraDistance = 7
-  private isDragging     = false
-  private lastMouseX     = 0
-  private lastMouseY     = 0
+
 
   private collectParticles: THREE.Points[] = []
+  private isPaused = false
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -99,12 +98,10 @@ private setupEventListeners(): void {
 
     const canvas = this.renderer.domElement
 
-    // Clic gauche sur le canvas = activer la rotation libre
     canvas.addEventListener('click', () => {
       canvas.requestPointerLock()
     })
 
-    // Quand pointer lock est actif, la souris contrôle la caméra librement
     document.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === canvas) {
         this.cameraYaw   -= e.movementX * 0.003
@@ -112,7 +109,6 @@ private setupEventListeners(): void {
       }
     })
 
-    // ESC désactive automatiquement le pointer lock
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (document.pointerLockElement === canvas) {
@@ -136,8 +132,8 @@ private setupEventListeners(): void {
     })
     document.getElementById('restart-session-btn')?.addEventListener('click', () => this.restartSession())
     document.getElementById('resume-btn')?.addEventListener('click', () => this.resume())
-    document.getElementById('lose-retry-btn')?.addEventListener('click', () => this.restartSession())
-    document.getElementById('quit-btn')?.addEventListener('click', () => this.quit())
+    document.getElementById('lose-retry-btn')?.addEventListener('click', () => location.reload())
+    document.getElementById('quit-btn')?.addEventListener('click', () => location.reload())
 
     ;(window as any)._soundToggle = () => {
       this.sound?.toggle()
@@ -192,27 +188,29 @@ private setupEventListeners(): void {
   }
 
 
-  pause(): void {
-    if (this.gameState !== 'playing') return
-    this.gameState = 'paused'
-    this.sound.pauseGameMusic()
-    this.joystick?.hide()                                     
-    document.getElementById('pause-screen')!.style.display = 'flex'
-    const pauseBtn = document.getElementById('pause-btn')!
-    pauseBtn.textContent = '▶'
-    pauseBtn.title = 'Reprendre (ESC)'
-  }
+pause(): void {
+  if (this.gameState !== 'playing') return
+  this.gameState = 'paused'
+  this.isPaused = true                   
+  this.sound.pauseGameMusic()
+  this.joystick?.hide()
+  document.getElementById('pause-screen')!.style.display = 'flex'
+  const pauseBtn = document.getElementById('pause-btn')!
+  pauseBtn.textContent = '▶'
+  pauseBtn.title = 'Reprendre (ESC)'
+}
 
-  resume(): void {
-    if (this.gameState !== 'paused') return
-    this.gameState = 'playing'
-    this.sound.resumeGameMusic()
-    this.joystick?.show()                                     
-    document.getElementById('pause-screen')!.style.display = 'none'
-    const pauseBtn = document.getElementById('pause-btn')!
-    pauseBtn.textContent = '⏸'
-    pauseBtn.title = 'Pause (ESC)'
-  }
+resume(): void {
+  if (this.gameState !== 'paused') return
+  this.gameState = 'playing'
+  this.isPaused = false                   
+  this.sound.resumeGameMusic()
+  this.joystick?.show()
+  document.getElementById('pause-screen')!.style.display = 'none'
+  const pauseBtn = document.getElementById('pause-btn')!
+  pauseBtn.textContent = '⏸'
+  pauseBtn.title = 'Pause (ESC)'
+}
 
   quit(): void {
     document.getElementById('pause-screen')!.style.display = 'none'
@@ -249,38 +247,42 @@ private setupEventListeners(): void {
     requestAnimationFrame(() => { splash.style.opacity = '1' })
   }
 
-  restartSession(): void {
-    document.getElementById('pause-screen')!.style.display  = 'none'
-    document.getElementById('lose-screen')!.style.display   = 'none'
-    document.getElementById('win-screen')!.style.display    = 'none'
-    document.getElementById('damage-overlay')!.style.opacity = '0'
+restartSession(): void {
+  document.getElementById('pause-screen')?.style.setProperty('display', 'none')
+  document.getElementById('lose-screen')?.style.setProperty('display', 'none')
+  document.getElementById('win-screen')?.style.setProperty('display', 'none')
+  document.getElementById('damage-overlay')?.style.setProperty('opacity', '0')
 
-    this.timeLeft       = this.totalGameTime
-    this.score          = 0
-    this.collectedCount = 0
-    this.difficulty     = 1.0
+  this.timeLeft       = this.totalGameTime
+  this.score          = 0
+  this.collectedCount = 0
+  this.difficulty     = 1.0
+  this.isPaused       = false           
 
-    this.rat.reset()
-    for (const cat of this.cats) cat.resetToPatrol()
-    for (let i = 0; i < this.ingredients.length; i++) {
-      this.ingredients[i].resetIngredient()
-      const slot = document.getElementById(`slot-${i}`)
-      if (slot) slot.classList.remove('collected')
-    }
+  this.rat.reset()
+  for (const cat of this.cats) cat.resetToPatrol()
+  for (let i = 0; i < this.ingredients.length; i++) {
+    this.ingredients[i].resetIngredient()
+    document.getElementById(`slot-${i}`)?.classList.remove('collected')
+  }
 
-    this.hud.updateLives(3)
-    this.hud.updateScore(0)
-    this.hud.updateTimer(this.totalGameTime)
+  this.hud.updateLives(3)
+  this.hud.updateScore(0)
+  this.hud.updateTimer(this.totalGameTime)
 
-    const pauseBtn = document.getElementById('pause-btn')!
+  const pauseBtn = document.getElementById('pause-btn')
+  if (pauseBtn) {
     pauseBtn.textContent = '⏸'
     pauseBtn.title = 'Pause (ESC)'
     pauseBtn.style.display = 'flex'
-
-    this.joystick?.show()                                     
-    this.sound.resumeGameMusic()
-    this.gameState = 'playing'
   }
+
+  this.joystick?.show()
+  this.sound.resumeGameMusic()
+
+  this.timer.update() 
+  this.gameState = 'playing'
+}
 
 
   startMenuMusic(): void { this.sound.playMenuMusic() }
@@ -298,6 +300,11 @@ private setupEventListeners(): void {
 
   private loop = (): void => {
     requestAnimationFrame(this.loop)
+    
+    if (this.isPaused || this.gameState === 'lose' || this.gameState === 'win') {
+      this.renderer.render(this.scene, this.camera)
+      return
+    }
     this.timer.update()
     const dt = Math.min(this.timer.getDelta(), 0.05)
     TWEEN.update()
@@ -309,7 +316,7 @@ private setupEventListeners(): void {
 
     this.timeLeft -= dt
     this.hud.updateTimer(this.timeLeft)
-    if (this.timeLeft <= 0) { this.lose(); return }
+    if (this.timeLeft <= 0) { this.lose('time'); return }
 
     this.difficulty = 1.0 + (1 - this.timeLeft / this.totalGameTime) * 0.6
     for (const cat of this.cats) cat.difficultyMult = this.difficulty
@@ -326,11 +333,17 @@ private setupEventListeners(): void {
     }
 
     this.rat.update(dt, this.cameraYaw)
+
     const ratPos = this.rat.getPosition()
+const resolved = this.map.resolveCollision(ratPos, 0.4)
+if (!resolved.equals(ratPos)) {
+  this.rat.setPosition(resolved)
+}
+
 this.rat.setIndoor(this.map.isInsideBuilding(ratPos.x, ratPos.z))
     this.map.update(this.timer.getElapsed())
     for (const ing of this.ingredients) ing.update(dt)
-    this.checkEnemyCollisions()
+    this.checkEnemyCollisions(dt)
     this.checkCollections()
     this.updateCamera()
     this.updateMinimap()
@@ -343,7 +356,6 @@ this.rat.setIndoor(this.map.isInsideBuilding(ratPos.x, ratPos.z))
 
   private updateCamera(): void {
     const ratPos = this.rat.getPosition()
-    // Ajoute Math.PI pour que la caméra soit DERRIÈRE le rat
     const yaw = this.cameraYaw + Math.PI
     const x = ratPos.x + Math.sin(yaw) * Math.cos(this.cameraPitch) * this.cameraDistance
     const y = ratPos.y + Math.sin(this.cameraPitch) * this.cameraDistance
@@ -380,10 +392,10 @@ this.rat.setIndoor(isInsideBuilding)
     }
   }
 
-  private checkEnemyCollisions(): void {
+  private checkEnemyCollisions(dt: number): void {
     const ratPos = this.rat.getPosition()
     for (const cat of this.cats) {
-      const result = cat.update(this.timer.getDelta(), ratPos)
+     const result = cat.update(dt, ratPos)
 
       if (result.spotted) {
         this.hud.showMessage('😾 Un chat t\'a repéré ! Fuis !', 2000)
@@ -403,7 +415,7 @@ this.rat.setIndoor(isInsideBuilding)
           }
         }
 
-        if (this.rat.state.lives <= 0) this.lose()
+        if (this.rat.state.lives <= 0) this.lose('cat')
       }
     }
   }
@@ -438,13 +450,13 @@ this.rat.setIndoor(isInsideBuilding)
       .start()
   }
 
-  private lose(): void {
+  private lose(reason: 'cat' | 'time'): void {
     this.gameState = 'lose'
     this.sound.playLose()
-    this.joystick?.hide()                                      
+    this.joystick?.hide()
     const pauseBtn = document.getElementById('pause-btn')
     if (pauseBtn) pauseBtn.style.display = 'none'
-    this.hud.showLose()
+    this.hud.showLose(reason)
   }
 
 

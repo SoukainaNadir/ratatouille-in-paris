@@ -381,7 +381,12 @@ this.toonMaterials[i].color.copy(shaded)
   }
 
   getPosition(): THREE.Vector3 { return this.mesh.position.clone() }
-
+  setPosition(pos: THREE.Vector3): void {
+    this.body.position.set(pos.x, this.body.position.y, pos.z)
+    this.body.velocity.x = 0
+    this.body.velocity.z = 0
+    this.mesh.position.set(pos.x, this.mesh.position.y, pos.z)
+  }
   reset(): void {
     this.body.position.set(0, 1, 0)
     this.body.velocity.set(0, 0, 0)

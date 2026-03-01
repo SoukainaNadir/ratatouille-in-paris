@@ -270,19 +270,22 @@ export class StoryBook {
   }
 
   private goTo(index: number): void {
-    if (this.transitioning) return
-    this.transitioning = true
+  if (this.transitioning) return
+  if (index < 0 || index >= SLIDES.length) return  
+  this.transitioning = true
 
-    const oldSlide = document.getElementById('sb-slide')
-    oldSlide?.classList.remove('active')
-    oldSlide?.classList.add('leaving')
+  const oldSlide = document.getElementById('sb-slide')
+  oldSlide?.classList.remove('active')
+  oldSlide?.classList.add('leaving')
 
-    setTimeout(() => {
-      this.current = index
-      this.transitioning = false
-      this.render()
-    }, 600)
-  }
+  setTimeout(() => {
+    if (!document.body.contains(this.container)) return  
+    this.current = index
+    this.transitioning = false
+    this.render()
+  }, 600)
+}
+
 
   private bindKeys(): void {
     const handler = (e: KeyboardEvent) => {
@@ -297,11 +300,12 @@ export class StoryBook {
   }
 
   private close(): void {
-    this.container.style.transition = 'opacity 1s'
-    this.container.style.opacity = '0'
-    setTimeout(() => {
-      this.container.remove()
-      this.onComplete()
-    }, 1000)
-  }
+  this.transitioning = true 
+  this.container.style.transition = 'opacity 1s'
+  this.container.style.opacity = '0'
+  setTimeout(() => {
+    this.container.remove()
+    this.onComplete()
+  }, 1000)
+}
 }

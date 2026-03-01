@@ -87,9 +87,6 @@ export class MobileJoystick {
     this.joystickKnob.textContent = '🐀'
     this.joystickBase.appendChild(this.joystickKnob)
 
-    // ── ZONE CAMÉRA — moitié droite, entre HUD haut et minimap ───────────
-    // top:60px pour éviter le timer/score
-    // bottom:240px pour éviter minimap (150px) + inventaire + marge
     this._cameraZone = document.createElement('div')
     Object.assign(this._cameraZone.style, {
       position:      'absolute',
@@ -114,10 +111,7 @@ export class MobileJoystick {
     cameraHint.textContent = '⟵ CAMÉRA'
     this._cameraZone.appendChild(cameraHint)
 
-    // ── BOUTON SAUT — AU-DESSUS de la minimap, aligné à droite ───────────
-    // Minimap: bottom:30px, right:20px, 120×120
-    // → bord haut minimap = bottom: 150px
-    // Bouton: bottom:160px, right:20px = 10px au-dessus de la minimap
+
     this.jumpBtn = document.createElement('div')
     Object.assign(this.jumpBtn.style, {
       position:       'absolute',

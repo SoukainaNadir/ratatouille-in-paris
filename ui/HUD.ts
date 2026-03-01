@@ -150,13 +150,13 @@ export class HUD {
   }
 
   showWin(score: number): void {
-    document.getElementById('final-score')!.textContent = score.toString()
+  document.getElementById('final-score')!.textContent = Math.round(score).toString()
     const win = document.getElementById('win-screen')!
     win.style.display = 'flex'
   }
 
-  showLose(): void {
-    const lose = document.getElementById('lose-screen')!
-    lose.style.display = 'flex'
-  }
+  showLose(reason: 'cat' | 'time'): void {
+  const id = reason === 'cat' ? 'lose-screen-cat' : 'lose-screen-time'
+  document.getElementById(id)!.style.display = 'flex'
+}
 }
