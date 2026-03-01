@@ -120,7 +120,6 @@ export class Cat {
     this.body.position.set(sp.x, 1, sp.z)
     this.body.fixedRotation = true
     this.physics.world.addBody(this.body)
-    this.physics.linkMeshToBody(this.mesh, this.body)
   }
 
   update(dt: number, ratPosition: THREE.Vector3): CatUpdateResult {
@@ -193,6 +192,8 @@ export class Cat {
     }
 
     this.animateCat()
+    this.mesh.position.set(this.body.position.x, 0.35, this.body.position.z)
+
     return { caught: false, spotted }
   }
 

@@ -33,7 +33,7 @@ const SLIDES: Slide[] = [
   },
   {
     image: '/story5.png',
-    title: '3 minutes. C\'est tout ce qu\'il te reste.',
+    title: '2 minutes. C\'est tout ce qu\'il te reste.',
     subtitle: 'C\'est maintenant ou jamais, Chef.',
     align: 'bottom'
   }
