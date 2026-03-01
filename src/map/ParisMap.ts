@@ -12,6 +12,7 @@ export class ParisMap {
   private balloon!: THREE.Group
   private fountainWater!: THREE.Mesh
   public ambushSpots: THREE.Vector3[] = []
+  private buildingBounds: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = []
 
   private readonly MAP_SIZE = 80
 
@@ -37,7 +38,7 @@ export class ParisMap {
     this.setupAtmosphere()
     this.createGround()
     this.createSeine()
-    this.createMergedCity()   // ← replaces createCityBlocks()
+    this.createMergedCity()   
     this.createAlleyways()
     this.createElevatedPlatform()
     this.createButterPuddles()
@@ -94,7 +95,7 @@ export class ParisMap {
     this.scene.add(skyDome)
     this.scene.fog = new THREE.FogExp2(0xffb060, 0.012)
 
-    const sun = new THREE.DirectionalLight(0xffaa44, 2.2)
+    const sun = new THREE.DirectionalLight(0xff8822, 3.0) 
     sun.position.set(40, 60, 20)
     sun.castShadow = true
     sun.shadow.mapSize.width  = 1024
@@ -111,7 +112,7 @@ export class ParisMap {
     const fill = new THREE.DirectionalLight(0x9966cc, 0.5)
     fill.position.set(-30, 20, -20)
     this.scene.add(fill)
-    this.scene.add(new THREE.AmbientLight(0xffd6a5, 0.9))
+    this.scene.add(new THREE.AmbientLight(0xffd6a5, 0.45)) 
   }
 
   private createGround(): void {
@@ -158,7 +159,6 @@ export class ParisMap {
     }
   }
 
-  // ─── MERGED CITY — one draw call per material bucket ─────────────────────────
 
   private createMergedCity(): void {
     const blocks: [number, number, number, number, number][] = [
@@ -181,7 +181,6 @@ export class ParisMap {
       [ 46,  28,  5,  5,   7], [-46,  28,  5,  5,   8], [ 15, -30,  6,  4,   8], [-15, -30,  6,  4,   9],
     ]
 
-    // Geometry buckets — merged per material at end = ~6 draw calls for entire city
     const geoBody:     THREE.BufferGeometry[] = []
     const geoBand:     THREE.BufferGeometry[] = []
     const geoMansard:  THREE.BufferGeometry[] = []
@@ -198,14 +197,19 @@ export class ParisMap {
     for (const [x, z, w, d, h] of blocks) {
       // Physics
       this.physics.createBox(new CANNON.Vec3(w / 2, h / 2, d / 2), new CANNON.Vec3(x, h / 2, z))
-
-      // ── Body
+    this.buildingBounds.push({
+      minX: x - w / 2,
+      maxX: x + w / 2,
+      minZ: z - d / 2,
+      maxZ: z + d / 2,
+    })
+      // Body
       const body = new THREE.BoxGeometry(w, h, d)
       dummy.position.set(x, h / 2, z); dummy.updateMatrix()
       body.applyMatrix4(dummy.matrix)
       geoBody.push(body)
 
-      // ── Stone bands
+      // Stone bands
       const bandCount = Math.floor(h / 2.5)
       for (let f = 1; f < bandCount; f++) {
         const band = new THREE.BoxGeometry(w + 0.12, 0.12, d + 0.12)
@@ -214,7 +218,7 @@ export class ParisMap {
         geoBand.push(band)
       }
 
-      // ── Mansard roof
+      // Mansard roof
       const r1 = new THREE.BoxGeometry(w + 0.4, h * 0.18, d + 0.4)
       dummy.position.set(x, h + h * 0.09, z); dummy.updateMatrix()
       r1.applyMatrix4(dummy.matrix)
@@ -304,9 +308,8 @@ export class ParisMap {
       this.buildings.add(mesh)
     }
 
-    // Randomly pick body color per building is impossible in merged mode,
-    // so we use a single mid-tone warm cream — still looks great
-    flush(geoBody,    new THREE.MeshLambertMaterial({ color: 0xfff0d8 }))
+   
+    flush(geoBody, new THREE.MeshLambertMaterial({ color: 0xe8c898 }))
     flush(geoBand,    new THREE.MeshLambertMaterial({ color: 0xe8d5b0 }))
     flush(geoMansard, new THREE.MeshLambertMaterial({ color: 0x9b6b8a }))
     flush(geoChimney, new THREE.MeshLambertMaterial({ color: 0x8a6a5a }))
@@ -362,6 +365,7 @@ export class ParisMap {
     ramp.position.set(4.2, 1.9, -20); ramp.rotation.x = Math.PI * 0.085
     ramp.castShadow = true; this.scene.add(ramp)
     this.physics.createBox(new CANNON.Vec3(1.4, 0.18, 3.5), new CANNON.Vec3(4.2, 1.9, -20))
+    
     const railMat = new THREE.MeshLambertMaterial({ color: 0x9a9080 })
     for (const [rx, rz, rw, rd] of [[0,-4.4,9,0.15],[0,4.4,9,0.15],[-4.4,0,0.15,9]]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.65, rd), railMat)
@@ -393,7 +397,6 @@ export class ParisMap {
     const poleMat = new THREE.MeshLambertMaterial({ color: this.C.lamp })
     const bulbMat = new THREE.MeshBasicMaterial({ color: 0xff9933 })
 
-    // Only 6 real point lights near center
     const realLightIdx = new Set([0,1,2,3,4,5])
 
     positions.forEach(([x, z], idx) => {
@@ -547,6 +550,13 @@ export class ParisMap {
       [new THREE.Vector3(12,0.5,0), new THREE.Vector3(12,0.5,-22), new THREE.Vector3(-12,0.5,-22), new THREE.Vector3(-12,0.5,0)],
     ]
   }
+
+  isInsideBuilding(x: number, z: number): boolean {
+  for (const bb of this.buildingBounds) {
+    if (x > bb.minX && x < bb.maxX && z > bb.minZ && z < bb.maxZ) return true
+  }
+  return false
+}
 
   getAmbushPositions(): THREE.Vector3[] { return this.ambushSpots }
 }

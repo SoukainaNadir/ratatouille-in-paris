@@ -1,3 +1,5 @@
+import * as THREE from 'three'
+
 export class HUD {
   private livesEl: HTMLElement
   private timerEl: HTMLElement
@@ -83,11 +85,14 @@ export class HUD {
     ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2)
     ctx.fill()
 
-    const toMap = (wx: number, wz: number) => ({
-      px: ((wx + half) / mapSize) * w,
-      py: ((wz + half) / mapSize) * h
-    })
-
+    const toMap = (wx: number, wz: number) => {
+      const clamped_x = Math.max(-half, Math.min(half, wx))
+      const clamped_z = Math.max(-half, Math.min(half, wz))
+      return {
+        px: ((clamped_x + half) / mapSize) * w,
+        py: ((clamped_z + half) / mapSize) * h
+      }
+    }
     // Grid lines
     ctx.strokeStyle = 'rgba(100,90,70,0.3)'
     ctx.lineWidth = 0.5

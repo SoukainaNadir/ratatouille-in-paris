@@ -7,6 +7,7 @@ import { Ingredient, INGREDIENTS_DATA } from '../entities/Ingredient'
 import { ParisMap } from '../map/ParisMap'
 import { SoundManager } from './SoundManager'
 import { HUD } from '../../ui/HUD'
+import { MobileJoystick } from '../controls/MobileJoystick'   
 
 export class GameEngine {
   private renderer: THREE.WebGLRenderer
@@ -21,6 +22,7 @@ export class GameEngine {
   private map!: ParisMap
   private hud: HUD
   private sound!: SoundManager
+  private joystick?: MobileJoystick                          
 
   private gameState: 'intro' | 'playing' | 'paused' | 'win' | 'lose' = 'intro'
   private timeLeft      = 120
@@ -47,7 +49,7 @@ export class GameEngine {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.2
+    this.renderer.toneMappingExposure = 0.85
 
     this.scene = new THREE.Scene()
     this.scene.fog = new THREE.Fog(0x2a1a0a, 30, 100)
@@ -62,7 +64,6 @@ export class GameEngine {
     this.setupEventListeners()
   }
 
-  // ===== LIGHTING =====
 
   private setupLighting(): void {
     this.scene.add(new THREE.AmbientLight(0xffd0a0, 0.6))
@@ -88,7 +89,6 @@ export class GameEngine {
     this.scene.add(new THREE.HemisphereLight(0xff9933, 0x223311, 0.4))
   }
 
-  // ===== EVENT LISTENERS =====
 
   private setupEventListeners(): void {
     window.addEventListener('resize', () => {
@@ -119,7 +119,6 @@ export class GameEngine {
       this.cameraDistance = Math.max(3, Math.min(15, this.cameraDistance + e.deltaY * 0.01))
     })
 
-    // ESC = pause / resume
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (this.gameState === 'playing') this.pause()
@@ -127,7 +126,6 @@ export class GameEngine {
       }
     })
 
-    // HUD buttons
     document.getElementById('pause-btn')?.addEventListener('click', () => {
       if (this.gameState === 'playing') this.pause()
       else if (this.gameState === 'paused') this.resume()
@@ -137,7 +135,6 @@ export class GameEngine {
     document.getElementById('lose-retry-btn')?.addEventListener('click', () => this.restartSession())
     document.getElementById('quit-btn')?.addEventListener('click', () => this.quit())
 
-    // Sound toggle (exposed globally for the HTML button)
     ;(window as any)._soundToggle = () => {
       this.sound?.toggle()
       const btn = document.getElementById('sound-btn')
@@ -145,16 +142,14 @@ export class GameEngine {
     }
   }
 
-  // ===== INIT =====
 
   async init(): Promise<void> {
     this.sound = new SoundManager()
-
-    // ── 🔊 SPATIAL AUDIO: attach AudioListener to camera ──────────────────
-    // This makes the camera the "ears" of the player.
-    // All THREE.PositionalAudio objects in the scene will be heard
-    // relative to this listener's position and orientation.
     this.camera.add(this.sound.listener)
+
+    this.joystick = new MobileJoystick(() => {
+      this.rat?.jump()   
+    })
 
     this.map = new ParisMap(this.scene, this.physics)
     this.map.build()
@@ -162,7 +157,6 @@ export class GameEngine {
     this.rat = new Rat(this.physics)
     this.scene.add(this.rat.mesh)
 
-    // Ingredients
     const spawnPositions = this.map.getIngredientSpawnPositions()
     for (let i = 0; i < INGREDIENTS_DATA.length; i++) {
       const ing = new Ingredient({ ...INGREDIENTS_DATA[i], position: spawnPositions[i] })
@@ -170,14 +164,12 @@ export class GameEngine {
       this.scene.add(ing.mesh)
     }
 
-    // Patrol cats — pass `this.sound` so each cat can create its own PositionalAudio
     for (const route of this.map.getCatPatrolRoutes()) {
       const cat = new Cat(this.physics, route, this.sound)
       this.cats.push(cat)
       this.scene.add(cat.mesh)
     }
 
-    // Ambush cats — small loop near archways
     for (const pos of this.map.getAmbushPositions()) {
       const r    = 0.9
       const loop = [
@@ -201,6 +193,7 @@ export class GameEngine {
     if (this.gameState !== 'playing') return
     this.gameState = 'paused'
     this.sound.pauseGameMusic()
+    this.joystick?.hide()                                     
     document.getElementById('pause-screen')!.style.display = 'flex'
     const pauseBtn = document.getElementById('pause-btn')!
     pauseBtn.textContent = '▶'
@@ -211,6 +204,7 @@ export class GameEngine {
     if (this.gameState !== 'paused') return
     this.gameState = 'playing'
     this.sound.resumeGameMusic()
+    this.joystick?.show()                                     
     document.getElementById('pause-screen')!.style.display = 'none'
     const pauseBtn = document.getElementById('pause-btn')!
     pauseBtn.textContent = '⏸'
@@ -241,6 +235,7 @@ export class GameEngine {
     pauseBtn.style.display = 'none'
     pauseBtn.textContent = '⏸'
 
+    this.joystick?.hide()                                      
     this.sound.pauseGameMusic()
     this.sound.playMenuMusic()
 
@@ -279,19 +274,20 @@ export class GameEngine {
     pauseBtn.title = 'Pause (ESC)'
     pauseBtn.style.display = 'flex'
 
+    this.joystick?.show()                                     
     this.sound.resumeGameMusic()
     this.gameState = 'playing'
   }
 
 
-  
   startMenuMusic(): void { this.sound.playMenuMusic() }
 
   start(): void {
-     document.getElementById('hud')!.style.display = 'block'
+    document.getElementById('hud')!.style.display = 'block'
     document.getElementById('pause-btn')!.style.display = 'flex'
     this.gameState = 'playing'
     this.sound.playGameMusic()
+    this.joystick?.show()                                  
     const pauseBtn = document.getElementById('pause-btn')
     if (pauseBtn) pauseBtn.style.display = 'flex'
     this.loop()
@@ -316,7 +312,18 @@ export class GameEngine {
     for (const cat of this.cats) cat.difficultyMult = this.difficulty
 
     this.physics.step(dt)
+
+    if (this.joystick) {
+      const { dx, dz } = this.joystick.getMovement()
+      const cam = this.joystick.consumeCameraInput()
+      this.cameraYaw   += cam.dyaw
+      this.cameraPitch  = Math.max(0.1, Math.min(1.0, this.cameraPitch + cam.dpitch))
+      this.rat.setJoystickInput(dx, dz)
+    }
+
     this.rat.update(dt, this.cameraYaw)
+    const ratPos = this.rat.getPosition()
+this.rat.setIndoor(this.map.isInsideBuilding(ratPos.x, ratPos.z))
     this.map.update(this.timer.getElapsed())
     for (const ing of this.ingredients) ing.update(dt)
     this.checkEnemyCollisions()
@@ -329,7 +336,6 @@ export class GameEngine {
     this.renderer.render(this.scene, this.camera)
   }
 
-  // ===== CAMERA =====
 
   private updateCamera(): void {
     const ratPos = this.rat.getPosition()
@@ -343,6 +349,10 @@ export class GameEngine {
 
   private checkCollections(): void {
     const ratPos = this.rat.getPosition()
+    const pos = this.rat.getPosition()
+const isInsideBuilding = this.map.isInsideBuilding(pos.x, pos.z)
+this.rat.setIndoor(isInsideBuilding)
+    this.rat.setIndoor(isInsideBuilding)
     for (let i = 0; i < this.ingredients.length; i++) {
       const ing = this.ingredients[i]
       if (ing.collected) continue
@@ -398,7 +408,8 @@ export class GameEngine {
     this.hud.updateMinimap(
       ratPos.x, ratPos.z,
       this.ingredients.map(ing => ({ x: ing.data.position.x, z: ing.data.position.z, collected: ing.collected })),
-      this.cats.map(cat => { const p = cat.getPosition(); return { x: p.x, z: p.z } })
+      this.cats.map(cat => { const p = cat.getPosition(); return { x: p.x, z: p.z } }),
+      120
     )
   }
 
@@ -407,6 +418,7 @@ export class GameEngine {
     this.gameState  = 'win'
     this.score     += Math.floor(this.timeLeft) * 5
     this.sound.playWin()
+    this.joystick?.hide()                                      
     const pauseBtn = document.getElementById('pause-btn')
     if (pauseBtn) pauseBtn.style.display = 'none'
 
@@ -423,6 +435,7 @@ export class GameEngine {
   private lose(): void {
     this.gameState = 'lose'
     this.sound.playLose()
+    this.joystick?.hide()                                      
     const pauseBtn = document.getElementById('pause-btn')
     if (pauseBtn) pauseBtn.style.display = 'none'
     this.hud.showLose()
@@ -531,7 +544,6 @@ export class GameEngine {
     animate()
   }
 
-  // ===== AR HOOKS =====
 
   setARCamera(camera: THREE.PerspectiveCamera): void { this.camera = camera }
 
