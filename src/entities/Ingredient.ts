@@ -113,6 +113,11 @@ export class Ingredient {
   getCollectionRadius(): number {
     return 1.2
   }
+  resetIngredient(): void {
+    this.collected = false
+    this.mesh.visible = true
+    this.floatTime = 0
+  }
 }
 
 export const INGREDIENTS_DATA: Omit<IngredientData, 'position'>[] = [

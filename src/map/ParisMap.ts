@@ -1,31 +1,28 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { PhysicsWorld } from '../engine/PhysicsWorld'
 
 export class ParisMap {
   private scene: THREE.Scene
   private physics: PhysicsWorld
   public buildings: THREE.Group = new THREE.Group()
-  private streetLights: THREE.Group = new THREE.Group()
   private balloon!: THREE.Group
   private fountainWater!: THREE.Mesh
   public ambushSpots: THREE.Vector3[] = []
+  private buildingBounds: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> = []
 
-  private readonly MAP_SIZE = 80
+  private readonly MAP_SIZE = 120
 
   private readonly C = {
-    sky:       0xd4c5e2,
-    fog:       0xc8b8d8,
-    road:      0x9a8878,
-    sidewalk:  0xe8d8c0,
-    buildings: [0xf5efe0, 0xfae8d4, 0xf0e8d8, 0xfcf0e0, 0xede0cc, 0xf8eadc, 0xf2e4d0, 0xfaf0e6],
-    mansard:   [0xc8a0b0, 0xb89098, 0xd4b0b8, 0xaa8890, 0xc0889a],
-    trunk:     0xa08060,
-    leaves:    0x7ab06a,
-    stone:     0xddd0c0,
-    water:     0x6a9ec4,
-    lamp:      0x6a5a4a,
+    road:     0x8a7a6a,
+    sidewalk: 0xe8d0a8,
+    trunk:    0x8a6a45,
+    leaves:   0x5a9a50,
+    stone:    0xddd0c0,
+    water:    0x5a8eaa,
+    lamp:     0x4a3a28,
   }
 
   constructor(scene: THREE.Scene, physics: PhysicsWorld) {
@@ -37,16 +34,14 @@ export class ParisMap {
     this.setupAtmosphere()
     this.createGround()
     this.createSeine()
-    this.createCityBlocks()
+    this.createMergedCity()
     this.createAlleyways()
-    this.createElevatedPlatform()
     this.createButterPuddles()
     this.createStreetLights()
-    this.createNotreDame()
     this.createCentralFountain()
     this.createTrees()
     this.createHotAirBalloon()
-    this.scene.add(this.buildings, this.streetLights)
+    this.scene.add(this.buildings)
     this.loadEiffelTower()
   }
 
@@ -62,13 +57,62 @@ export class ParisMap {
   }
 
   private setupAtmosphere(): void {
-    this.scene.background = new THREE.Color(this.C.sky)
-    this.scene.fog = new THREE.Fog(this.C.fog, 35, 100)  
+    const skyDome = new THREE.Mesh(
+      new THREE.SphereGeometry(200, 12, 6),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        uniforms: {
+          topColor:    { value: new THREE.Color(0x7a4a8a) },
+          bottomColor: { value: new THREE.Color(0xffb347) },
+          offset:      { value: 20.0 },
+          exponent:    { value: 0.5 },
+        },
+        vertexShader: `
+          varying vec3 vWorldPosition;
+          void main() {
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPos.xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }`,
+        fragmentShader: `
+          uniform vec3 topColor; uniform vec3 bottomColor;
+          uniform float offset; uniform float exponent;
+          varying vec3 vWorldPosition;
+          void main() {
+            float h = normalize(vWorldPosition + offset).y;
+            gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h,0.0),exponent),0.0)),1.0);
+          }`,
+      })
+    )
+    skyDome.frustumCulled = false
+    this.scene.add(skyDome)
+
+    this.scene.fog = new THREE.Fog(0xffb060, 40, 110)
+
+    const sun = new THREE.DirectionalLight(0xff8822, 2.5)
+    sun.position.set(40, 60, 20)
+    sun.castShadow = true
+    sun.shadow.mapSize.width  = 512
+    sun.shadow.mapSize.height = 512
+    sun.shadow.camera.near   = 1
+    sun.shadow.camera.far    = 120
+    sun.shadow.camera.left   = -50
+    sun.shadow.camera.right  =  50
+    sun.shadow.camera.top    =  50
+    sun.shadow.camera.bottom = -50
+    sun.shadow.autoUpdate = false
+    sun.shadow.needsUpdate = true
+    this.scene.add(sun)
+
+    const fill = new THREE.DirectionalLight(0x9966cc, 0.4)
+    fill.position.set(-30, 20, -20)
+    this.scene.add(fill)
+    this.scene.add(new THREE.AmbientLight(0xffd6a5, 0.5))
   }
 
   private createGround(): void {
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(this.MAP_SIZE * 3, this.MAP_SIZE * 3),
+      new THREE.PlaneGeometry(300, 300),
       new THREE.MeshLambertMaterial({ color: this.C.road })
     )
     ground.rotation.x = -Math.PI / 2
@@ -76,48 +120,59 @@ export class ParisMap {
     this.scene.add(ground)
     this.physics.createGroundPlane(0)
 
-    const swMat = new THREE.MeshLambertMaterial({ color: this.C.sidewalk })
+    const swGeos: THREE.BufferGeometry[] = []
+    const dummy = new THREE.Object3D()
     for (const r of [0, 18, -18, 36, -36, 54, -54]) {
-      const h = new THREE.Mesh(new THREE.PlaneGeometry(this.MAP_SIZE * 3, 4.5), swMat)
-      h.rotation.x = -Math.PI / 2; h.position.set(0, 0.01, r); this.scene.add(h)
-      const v = new THREE.Mesh(new THREE.PlaneGeometry(4.5, this.MAP_SIZE * 3), swMat)
-      v.rotation.x = -Math.PI / 2; v.position.set(r, 0.01, 0); this.scene.add(v)
+      const hg = new THREE.PlaneGeometry(300, 4.5)
+      dummy.position.set(0, 0.01, r); dummy.rotation.x = -Math.PI / 2; dummy.updateMatrix()
+      hg.applyMatrix4(dummy.matrix); swGeos.push(hg)
+      const vg = new THREE.PlaneGeometry(4.5, 300)
+      dummy.position.set(r, 0.01, 0); dummy.updateMatrix()
+      vg.applyMatrix4(dummy.matrix); swGeos.push(vg)
+    }
+    dummy.rotation.set(0, 0, 0)
+    const swMerged = mergeGeometries(swGeos, false)
+    if (swMerged) {
+      const sw = new THREE.Mesh(swMerged, new THREE.MeshLambertMaterial({ color: this.C.sidewalk }))
+      sw.receiveShadow = true
+      this.scene.add(sw)
     }
   }
 
   private createSeine(): void {
     const river = new THREE.Mesh(
-      new THREE.PlaneGeometry(this.MAP_SIZE * 3, 20),
+      new THREE.PlaneGeometry(300, 20),
       new THREE.MeshLambertMaterial({ color: this.C.water, transparent: true, opacity: 0.9 })
     )
     river.rotation.x = -Math.PI / 2
     river.position.set(0, 0.02, -35)
     this.scene.add(river)
 
-    const quaiMat = new THREE.MeshLambertMaterial({ color: 0xe0d0b0 })
+    const stoneGeos: THREE.BufferGeometry[] = []
+    const dummy = new THREE.Object3D()
     for (const side of [-1, 1]) {
-      const q = new THREE.Mesh(new THREE.PlaneGeometry(this.MAP_SIZE * 3, 5), quaiMat)
-      q.rotation.x = -Math.PI / 2; q.position.set(0, 0.03, -35 + side * 12); this.scene.add(q)
+      const qg = new THREE.PlaneGeometry(300, 5)
+      dummy.position.set(0, 0.03, -35 + side * 12)
+      dummy.rotation.x = -Math.PI / 2; dummy.updateMatrix()
+      qg.applyMatrix4(dummy.matrix); stoneGeos.push(qg)
     }
-
-    const stoneMat = new THREE.MeshLambertMaterial({ color: this.C.stone })
-    const deck1 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 22), stoneMat)
-    deck1.position.set(8, 0.9, -35); this.scene.add(deck1)
-    const deck2 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 22), stoneMat)
-    deck2.position.set(-8, 0.9, -35); this.scene.add(deck2)
-    for (const [bx, pz] of [[8,-7],[8,0],[8,7],[-8,-7],[-8,0],[-8,7]]) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 2.5, 8), stoneMat)
-      p.position.set(bx, 0.5, -35 + pz); this.scene.add(p)
+    dummy.rotation.set(0, 0, 0)
+    for (const bx of [8, -8]) {
+      const dg = new THREE.BoxGeometry(7, 0.5, 22)
+      dummy.position.set(bx, 0.9, -35); dummy.updateMatrix()
+      dg.applyMatrix4(dummy.matrix); stoneGeos.push(dg)
     }
-    for (const side of [-1, 1]) {
-      for (const bx of [8, -8]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 0.2), stoneMat)
-        rail.position.set(bx, 1.4, -35 + side * 10.5); this.scene.add(rail)
-      }
+    for (const [bx, pz] of [[8,-7],[8,0],[8,7],[-8,-7],[-8,0],[-8,7]] as [number,number][]) {
+      const pg = new THREE.CylinderGeometry(0.55, 0.65, 2.5, 6)
+      dummy.position.set(bx, 0.5, -35 + pz); dummy.updateMatrix()
+      pg.applyMatrix4(dummy.matrix); stoneGeos.push(pg)
     }
+    const stoneMerged = mergeGeometries(stoneGeos, false)
+    if (stoneMerged)
+      this.scene.add(new THREE.Mesh(stoneMerged, new THREE.MeshLambertMaterial({ color: this.C.stone })))
   }
 
-  private createCityBlocks(): void {
+  private createMergedCity(): void {
     const blocks: [number, number, number, number, number][] = [
       [ 10,  15,  8,  6,  14], [ 20,  15,  7,  7,  18], [ 30,  15,  8,  6,  12],
       [ 10,  25,  6,  5,  10], [ 20,  25,  8,  6,  16], [ 30,  25,  6,  6,  14],
@@ -130,242 +185,176 @@ export class ParisMap {
       [-38,   5,  6,  6,  11], [-38,  15,  5,  5,  10], [-38,  25,  6,  5,  14],
       [-38,  -5,  6,  6,   9], [-38, -15,  5,  5,  12], [-38, -25,  6,  5,   8],
       [ 10, -15,  8,  6,  15], [ 20, -15,  7,  7,  11], [ 30, -15,  8,  6,  14],
-      [ 10, -25,  6,  5,  10], [ 20, -25,  7,  6,  13], [ 30, -25,  6,  6,   9],
-      [-10, -15,  8,  6,  12], [-20, -15,  7,  7,  16], [-30, -15,  8,  6,  10],
-      [-10, -25,  6,  5,  14], [-20, -25,  7,  6,  11], [-30, -25,  6,  6,  13],
+      [ 10, -25,  6,  5,  10], [ 20, -25,  7,  6,  13],
+      [-10, -15,  8,  6,  12], [-20, -15,  7,  7,  16],
+      [-10, -25,  6,  5,  14], [-20, -25,  7,  6,  11],
       [  7,   7,  5,  5,  10], [ -7,   7,  5,  5,  12], [  7,  -7,  5,  5,   9], [ -7,  -7,  5,  5,  11],
       [ 46,  10,  5,  5,   8], [-46,  10,  5,  5,   9], [ 46, -10,  5,  5,   7], [-46, -10,  5,  5,   8],
-      [ 46,  28,  5,  5,   7], [-46,  28,  5,  5,   8], [ 15, -30,  6,  4,   8], [-15, -30,  6,  4,   9],
+      [ 46,  28,  5,  5,   7], [-46,  28,  5,  5,   8],
     ]
 
-    for (const [x, z, w, d, h] of blocks) this.addBuilding(x, z, w, d, h)
-  }
+    const geoBody: THREE.BufferGeometry[]    = []
+    const geoBand: THREE.BufferGeometry[]    = []
+    const geoMansard: THREE.BufferGeometry[] = []
+    const geoChimney: THREE.BufferGeometry[] = []
+    const geoDoor: THREE.BufferGeometry[]    = []
+    const geoWinLit: THREE.BufferGeometry[]  = []
+    const geoWinDark: THREE.BufferGeometry[] = []
+    const geoWinWarm: THREE.BufferGeometry[] = []
+    const geoBalcony: THREE.BufferGeometry[] = []
+    const geoAwning: THREE.BufferGeometry[]  = []
+    const dummy = new THREE.Object3D()
 
-  private addBuilding(x: number, z: number, w: number, d: number, h: number): void {
-    const grp    = new THREE.Group()
-    const color  = this.C.buildings[Math.floor(Math.random() * this.C.buildings.length)]
-    const rColor = this.C.mansard[Math.floor(Math.random() * this.C.mansard.length)]
+    for (const [x, z, w, d, h] of blocks) {
+      this.physics.createBox(new CANNON.Vec3(w/2, h/2, d/2), new CANNON.Vec3(x, h/2, z))
+      this.buildingBounds.push({ minX: x-w/2, maxX: x+w/2, minZ: z-d/2, maxZ: z+d/2 })
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshLambertMaterial({ color }))
-    body.position.y = h / 2; body.castShadow = true; body.receiveShadow = true
-    grp.add(body)
+      dummy.position.set(x, h/2, z); dummy.updateMatrix()
+      const body = new THREE.BoxGeometry(w, h, d)
+      body.applyMatrix4(dummy.matrix); geoBody.push(body)
 
-    // Mansard roof
-    const r1 = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, h * 0.18, d + 0.4),
-      new THREE.MeshLambertMaterial({ color: rColor }))
-    r1.position.y = h + h * 0.09; grp.add(r1)
-    const r2 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.58, h * 0.12, d * 0.58),
-      new THREE.MeshLambertMaterial({ color: rColor }))
-    r2.position.y = h + h * 0.23; grp.add(r2)
+      const bandCount = Math.floor(h / 2.5)
+      for (let f = 1; f < bandCount; f++) {
+        const band = new THREE.BoxGeometry(w+0.12, 0.12, d+0.12)
+        dummy.position.set(x, f*2.5, z); dummy.updateMatrix()
+        band.applyMatrix4(dummy.matrix); geoBand.push(band)
+      }
 
-    // Chimney
-    if (Math.random() > 0.5) {
-      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.4),
-        new THREE.MeshLambertMaterial({ color: 0x886655 }))
-      ch.position.set((Math.random() - 0.5) * w * 0.5, h + h * 0.3 + 0.6, (Math.random() - 0.5) * d * 0.5)
-      grp.add(ch)
-    }
+      const r1 = new THREE.BoxGeometry(w+0.4, h*0.18, d+0.4)
+      dummy.position.set(x, h+h*0.09, z); dummy.updateMatrix()
+      r1.applyMatrix4(dummy.matrix); geoMansard.push(r1)
 
-    // Awning
-    if (Math.random() > 0.4) {
-      const awnColors = [0xf4a0b0, 0xe8c090, 0xa0c0a0, 0xf0d080, 0xd0a0d0, 0xa0b8d0]
-      const awn = new THREE.Mesh(new THREE.BoxGeometry(w * 0.65, 0.1, 1.5),
-        new THREE.MeshLambertMaterial({ color: awnColors[Math.floor(Math.random() * 6)] }))
-      awn.position.set(0, 2.4, d / 2 + 0.75); awn.rotation.x = 0.28; grp.add(awn)
-    }
+      const r2 = new THREE.BoxGeometry(w*0.58, h*0.12, d*0.58)
+      dummy.position.set(x, h+h*0.23, z); dummy.updateMatrix()
+      r2.applyMatrix4(dummy.matrix); geoMansard.push(r2)
 
-    // Ground floor door
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.12),
-      new THREE.MeshLambertMaterial({ color: 0x5a3820 }))
-    door.position.set((Math.random() - 0.5) * (w - 1.5), 0.9, d / 2 + 0.06)
-    grp.add(door)
+      const chimneyCount = 1 + Math.floor(Math.random() * 2)
+      for (let c = 0; c < chimneyCount; c++) {
+        const chimneyH = 1.0 + Math.random() * 1.2
+        const cx = x + (Math.random()-0.5)*w*0.7
+        const cz = z + (Math.random()-0.5)*d*0.7
+        const baseY = h + h*0.3
+        const ch = new THREE.BoxGeometry(0.35, chimneyH, 0.35)
+        dummy.position.set(cx, baseY+chimneyH/2, cz); dummy.updateMatrix()
+        ch.applyMatrix4(dummy.matrix); geoChimney.push(ch)
+      }
 
-    this.addWindows(grp, w, h, d)
-    grp.position.set(x, 0, z)
-    this.buildings.add(grp)
-    this.physics.createBox(new CANNON.Vec3(w / 2, h / 2, d / 2), new CANNON.Vec3(x, h / 2, z))
-  }
+      const doorX = x + (Math.random()-0.5)*(w-1.5)
+      const door = new THREE.BoxGeometry(0.9, 1.9, 0.12)
+      dummy.position.set(doorX, 0.95, z+d/2+0.06); dummy.updateMatrix()
+      door.applyMatrix4(dummy.matrix); geoDoor.push(door)
 
-  private addWindows(grp: THREE.Group, w: number, h: number, d: number): void {
-    const litMat  = new THREE.MeshBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: 0.9 })
-    const darkMat = new THREE.MeshBasicMaterial({ color: 0x3a4455, transparent: true, opacity: 0.85 })
-    const geo     = new THREE.PlaneGeometry(0.55, 0.75)
-    const rows    = Math.min(Math.floor(h / 2.5), 5)
-    const cols    = Math.min(Math.floor(w / 1.8), 5)
-    for (let row = 1; row <= rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const wx  = -w / 2 + (col + 0.7) * (w / cols)
-        const wy  = row * 2.5
-        const win = new THREE.Mesh(geo, Math.random() > 0.38 ? litMat : darkMat)
-        win.position.set(wx, wy, d / 2 + 0.01)
-        grp.add(win)
+      if (Math.random() > 0.5) {
+        const awn = new THREE.BoxGeometry(w*0.65, 0.14, 1.6)
+        dummy.position.set(x, 2.35, z+d/2+0.8)
+        dummy.rotation.set(0.3, 0, 0); dummy.updateMatrix()
+        awn.applyMatrix4(dummy.matrix); geoAwning.push(awn)
+        dummy.rotation.set(0, 0, 0)
+      }
+
+      const floors = Math.floor(h/2.5)
+      for (let f = 1; f < floors; f += 3) {
+        const slab = new THREE.BoxGeometry(w*0.55, 0.12, 0.7)
+        dummy.position.set(x, f*2.5+0.04, z+d/2+0.35); dummy.updateMatrix()
+        slab.applyMatrix4(dummy.matrix); geoBalcony.push(slab)
+      }
+
+      const rows = Math.min(Math.floor(h/2.5), 4)
+      const cols = Math.min(Math.floor(w/1.8), 4)
+      const winGeo = new THREE.PlaneGeometry(0.52, 0.72)
+      for (let row = 1; row <= rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const wx = x - w/2 + (col+0.7)*(w/cols)
+          const wy = row * 2.5
+          const wz = z + d/2 + 0.01
+          const r  = Math.random()
+          const win = winGeo.clone()
+          dummy.position.set(wx, wy, wz); dummy.updateMatrix()
+          win.applyMatrix4(dummy.matrix)
+          if (r > 0.85) geoWinWarm.push(win)
+          else if (r > 0.25) geoWinLit.push(win)
+          else geoWinDark.push(win)
+        }
       }
     }
+
+    const flush = (geos: THREE.BufferGeometry[], mat: THREE.Material, shadow = true) => {
+      if (!geos.length) return
+      const merged = mergeGeometries(geos, false)
+      if (!merged) return
+      const mesh = new THREE.Mesh(merged, mat)
+      if (shadow) { mesh.castShadow = true; mesh.receiveShadow = true }
+      this.buildings.add(mesh)
+    }
+
+    flush(geoBody,    new THREE.MeshLambertMaterial({ color: 0xe8c898 }))
+    flush(geoBand,    new THREE.MeshLambertMaterial({ color: 0xe8d5b0 }))
+    flush(geoMansard, new THREE.MeshLambertMaterial({ color: 0x9b6b8a }))
+    flush(geoChimney, new THREE.MeshLambertMaterial({ color: 0x8a6a5a }))
+    flush(geoDoor,    new THREE.MeshLambertMaterial({ color: 0x3a2010 }))
+    flush(geoBalcony, new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }))
+    flush(geoAwning,  new THREE.MeshLambertMaterial({ color: 0xc87820 }))
+    flush(geoWinLit,  new THREE.MeshBasicMaterial({ color: 0xff9944, transparent: true, opacity: 0.95 }), false)
+    flush(geoWinWarm, new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.88 }), false)
+    flush(geoWinDark, new THREE.MeshBasicMaterial({ color: 0x2a3040, transparent: true, opacity: 0.85 }), false)
   }
 
   private createAlleyways(): void {
-    const archMat = new THREE.MeshLambertMaterial({ color: 0xd0c0a8 })
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x3a3028 })
-
     const archways: [number, number, number][] = [
-      [ 15,  20,   0],
-      [-15,  20, Math.PI],
-      [ 25,  -5,   0],
-      [-25,  -5, Math.PI],
-      [  0,  30, Math.PI / 2],
-      [  0, -20, Math.PI / 2],
-      [ 35,  20,   0],
-      [-35,  20, Math.PI],
+      [ 15,  20,   0], [-15,  20, Math.PI],
+      [ 25,  -5,   0], [-25,  -5, Math.PI],
+      [  0,  30, Math.PI/2], [  0, -20, Math.PI/2],
+      [ 35,  20,   0], [-35,  20, Math.PI],
     ]
+    const geoArch: THREE.BufferGeometry[] = []
+    const geoDark: THREE.BufferGeometry[] = []
+    const dummy = new THREE.Object3D()
 
     for (const [x, z, ry] of archways) {
-      const grp = new THREE.Group()
-
-      const pillarL = new THREE.Mesh(new THREE.BoxGeometry(1.3, 5.5, 1.3), archMat)
-      pillarL.position.set(-2.2, 2.75, 0); grp.add(pillarL)
-      const pillarR = new THREE.Mesh(new THREE.BoxGeometry(1.3, 5.5, 1.3), archMat)
-      pillarR.position.set(2.2, 2.75, 0); grp.add(pillarR)
-      const top = new THREE.Mesh(new THREE.BoxGeometry(5.8, 1.6, 1.3), archMat)
-      top.position.set(0, 5.8, 0); grp.add(top)
-      const inner = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.8, 0.9), darkMat)
-      inner.position.set(0, 2.9, 0.2); grp.add(inner)
-
-      grp.position.set(x, 0, z)
-      grp.rotation.y = ry
-      this.scene.add(grp)
+      const place = (geo: THREE.BufferGeometry, lx: number, ly: number, lz: number, arr: THREE.BufferGeometry[]) => {
+        const g = geo.clone()
+        const local = new THREE.Object3D()
+        local.position.set(lx, ly, lz); local.updateMatrix()
+        dummy.position.set(x, 0, z); dummy.rotation.y = ry; dummy.updateMatrix()
+        g.applyMatrix4(dummy.matrix.clone().multiply(local.matrix))
+        arr.push(g)
+      }
+      place(new THREE.BoxGeometry(1.3, 5.5, 1.3), -2.2, 2.75, 0, geoArch)
+      place(new THREE.BoxGeometry(1.3, 5.5, 1.3),  2.2, 2.75, 0, geoArch)
+      place(new THREE.BoxGeometry(5.8, 1.6, 1.3),  0.0, 5.80, 0, geoArch)
+      place(new THREE.BoxGeometry(2.6, 3.8, 0.9),  0.0, 2.90, 0.2, geoDark)
 
       const off = new THREE.Vector3(0, 0.5, 1.8).applyEuler(new THREE.Euler(0, ry, 0))
-      this.ambushSpots.push(new THREE.Vector3(x + off.x, 0.5, z + off.z))
-
-      this.physics.createBox(new CANNON.Vec3(0.65, 2.75, 0.65), new CANNON.Vec3(x - 2.2, 2.75, z))
-      this.physics.createBox(new CANNON.Vec3(0.65, 2.75, 0.65), new CANNON.Vec3(x + 2.2, 2.75, z))
-    }
-  }
-
-  private createElevatedPlatform(): void {
-    const mat  = new THREE.MeshLambertMaterial({ color: this.C.stone })
-    const dark = new THREE.MeshLambertMaterial({ color: 0xb8a888 })
-
-    const plat = new THREE.Mesh(new THREE.BoxGeometry(9, 0.5, 9), mat)
-    plat.position.set(0, 3.8, -20); plat.castShadow = true; plat.receiveShadow = true
-    this.scene.add(plat)
-    this.physics.createBox(new CANNON.Vec3(4.5, 0.25, 4.5), new CANNON.Vec3(0, 3.8, -20))
-
-    for (const [px, pz] of [[-3.5,-3.5],[3.5,-3.5],[-3.5,3.5],[3.5,3.5]]) {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.44, 3.8, 8), dark)
-      pillar.position.set(px, 1.9, -20 + pz); this.scene.add(pillar)
+      this.ambushSpots.push(new THREE.Vector3(x+off.x, 0.5, z+off.z))
+      this.physics.createBox(new CANNON.Vec3(0.65, 2.75, 0.65), new CANNON.Vec3(x-2.2, 2.75, z))
+      this.physics.createBox(new CANNON.Vec3(0.65, 2.75, 0.65), new CANNON.Vec3(x+2.2, 2.75, z))
     }
 
-    const ramp = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.12, 7), mat)
-    ramp.position.set(4.2, 1.9, -20); ramp.rotation.x = Math.PI * 0.085
-    ramp.castShadow = true; ramp.receiveShadow = true; this.scene.add(ramp)
-    this.physics.createBox(new CANNON.Vec3(1.4, 0.18, 3.5), new CANNON.Vec3(4.2, 1.9, -20))
-
-    const railMat = new THREE.MeshLambertMaterial({ color: 0x9a9080 })
-    for (const [rx, rz, rw, rd] of [[0,-4.4,9,0.15],[0,4.4,9,0.15],[-4.4,0,0.15,9]]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(rw, 0.65, rd), railMat)
-      rail.position.set(rx, 4.35, -20 + rz); this.scene.add(rail)
-    }
+    dummy.rotation.set(0, 0, 0)
+    const mArch = mergeGeometries(geoArch, false)
+    if (mArch) this.scene.add(new THREE.Mesh(mArch, new THREE.MeshLambertMaterial({ color: 0xd0c0a8 })))
+    const mDark = mergeGeometries(geoDark, false)
+    if (mDark) this.scene.add(new THREE.Mesh(mDark, new THREE.MeshLambertMaterial({ color: 0x3a3028 })))
   }
 
   private createButterPuddles(): void {
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffe880, transparent: true, opacity: 0.72 })
     const spots: [number, number, number][] = [
       [15,20,1.1],[-15,20,0.9],[25,-5,1.0],[-25,-5,1.1],[0,30,0.8],[0,-20,1.0],
-      [3,4,0.7],[-3,-4,0.9],[5,-3,0.8],[-5,3,0.7],
-      [7,-23,1.0],[-7,-23,0.9],[9,-24,0.8],
-      [4,-17,0.8],[3,-18,0.7],[5,-16,0.9],
-      [18,8,0.8],[-18,-8,1.0],[12,-10,0.9],[-12,10,0.8],[22,0,0.7],[-22,0,0.8],
-      [30,5,0.7],[-30,-5,0.9],[0,18,0.8],[8,-8,0.7],[-8,8,0.9],
+      [3,4,0.7],[-3,-4,0.9],[5,-3,0.8],[-5,3,0.7],[7,-23,1.0],[-7,-23,0.9],
+      [18,8,0.8],[-18,-8,1.0],[12,-10,0.9],[-12,10,0.8],
     ]
+    const geos: THREE.BufferGeometry[] = []
+    const dummy = new THREE.Object3D()
     for (const [px, pz, r] of spots) {
-      const p = new THREE.Mesh(new THREE.CircleGeometry(r, 14), mat)
-      p.rotation.x = -Math.PI / 2; p.position.set(px, 0.03, pz); this.scene.add(p)
+      const g = new THREE.CircleGeometry(r, 7)
+      dummy.position.set(px, 0.03, pz); dummy.rotation.x = -Math.PI/2; dummy.updateMatrix()
+      g.applyMatrix4(dummy.matrix); geos.push(g)
     }
-  }
-
-  private loadEiffelTower(): void {
-    new GLTFLoader().load('/eiffel_tower.glb', (gltf) => {
-      const tower = gltf.scene
-      const box   = new THREE.Box3().setFromObject(tower)
-      const size  = new THREE.Vector3(); box.getSize(size)
-      tower.scale.setScalar(38 / size.y)
-      box.setFromObject(tower)
-      tower.position.set(-22, -box.min.y, 10)
-      tower.traverse(c => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true } })
-      this.scene.add(tower)
-      this.physics.createBox(new CANNON.Vec3(4, 19, 4), new CANNON.Vec3(-22, 19, 10))
-    }, undefined, () => this.createEiffelFallback())
-  }
-
-  private createEiffelFallback(): void {
-    const grp = new THREE.Group()
-    const mat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a })
-    for (const [lx, lz] of [[1,1],[-1,1],[1,-1],[-1,-1]]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.8, 9, 6), mat)
-      leg.position.set(lx * 3.5, 4.5, lz * 3.5); grp.add(leg)
-    }
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.4, 7), mat); p1.position.y = 9; grp.add(p1)
-    const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 2.8, 9, 8), mat); mid.position.y = 14; grp.add(mid)
-    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.8, 16, 6), mat); spire.position.y = 27; grp.add(spire)
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), new THREE.MeshBasicMaterial({ color: 0xff3333 }))
-    tip.position.y = 35; grp.add(tip)
-    grp.position.set(-22, 0, 10); this.scene.add(grp)
-    this.physics.createBox(new CANNON.Vec3(4, 18, 4), new CANNON.Vec3(-22, 18, 10))
-  }
-
-  private createNotreDame(): void {
-    const grp   = new THREE.Group()
-    const stone = new THREE.MeshLambertMaterial({ color: 0xe8dcc8 })
-    const dark  = new THREE.MeshLambertMaterial({ color: 0x8a8070 })
-
-    const nave = new THREE.Mesh(new THREE.BoxGeometry(9, 7, 16), stone)
-    nave.position.y = 3.5; nave.castShadow = true; grp.add(nave)
-    const choir = new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), stone)
-    choir.position.set(0, 3, 10); grp.add(choir)
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 4, 6, 4), dark)
-    roof.position.y = 9; roof.rotation.y = Math.PI / 4; grp.add(roof)
-    for (const tx of [-3.5, 3.5]) {
-      const t = new THREE.Mesh(new THREE.BoxGeometry(3, 14, 3), stone)
-      t.position.set(tx, 7, -5.5); grp.add(t)
-      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 1.3, 4, 6), dark)
-      sp.position.set(tx, 15, -5.5); grp.add(sp)
-    }
-    const ms = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.8, 6, 6), dark)
-    ms.position.set(0, 13, 5); grp.add(ms)
-    const rose = new THREE.Mesh(new THREE.CircleGeometry(1.2, 16),
-      new THREE.MeshBasicMaterial({ color: 0x88bbee }))
-    rose.position.set(0, 6, -7.6); rose.rotation.y = Math.PI; grp.add(rose)
-    const bm = new THREE.MeshLambertMaterial({ color: 0xd0c0a0 })
-    for (const bz of [-2, 2, 6]) for (const s of [-1, 1]) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3), bm)
-      b.position.set(s * 5.5, 5, bz); b.rotation.z = s * 0.35; grp.add(b)
-    }
-    grp.position.set(-10, 0, -26)
-    this.scene.add(grp)
-    this.physics.createBox(new CANNON.Vec3(5, 8, 8), new CANNON.Vec3(-10, 8, -26))
-  }
-
-  private createCentralFountain(): void {
-    const stone = new THREE.MeshLambertMaterial({ color: this.C.stone })
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(11, 32),
-      new THREE.MeshLambertMaterial({ color: 0xeeddc8 }))
-    plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.02; this.scene.add(plaza)
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.32, 8, 32), stone)
-    rim.rotation.x = Math.PI / 2; rim.position.y = 0.38; this.scene.add(rim)
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.8, 0.5, 24), stone)
-    base.position.y = 0.25; this.scene.add(base)
-    this.fountainWater = new THREE.Mesh(
-      new THREE.CylinderGeometry(3.5, 3.5, 0.15, 28),
-      new THREE.MeshLambertMaterial({ color: this.C.water, transparent: true, opacity: 0.8 }))
-    this.fountainWater.position.y = 0.55; this.scene.add(this.fountainWater)
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 4.5, 10), stone)
-    col.position.y = 2.75; this.scene.add(col)
-    const upper = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.6, 0.28, 16), stone)
-    upper.position.y = 5.1; this.scene.add(upper)
-    const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), stone)
-    top.position.y = 5.7; this.scene.add(top)
+    dummy.rotation.set(0, 0, 0)
+    const merged = mergeGeometries(geos, false)
+    if (merged)
+      this.scene.add(new THREE.Mesh(merged,
+        new THREE.MeshBasicMaterial({ color: 0xffe880, transparent: true, opacity: 0.72 })))
   }
 
   private createStreetLights(): void {
@@ -375,42 +364,95 @@ export class ParisMap {
       [0,22],[0,-22],[22,0],[-22,0],
       [22,18],[-22,18],[22,-18],[-22,-18],
       [36,5],[-36,5],[36,-5],[-36,-5],
-      [5,36],[-5,36],
     ]
-    const poleMat = new THREE.MeshLambertMaterial({ color: this.C.lamp })
-    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff5cc })
+    const geoPole: THREE.BufferGeometry[] = []
+    const geoBulb: THREE.BufferGeometry[] = []
+    const dummy = new THREE.Object3D()
+
     for (const [x, z] of positions) {
-      const grp  = new THREE.Group()
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 5.5, 7), poleMat)
-      pole.position.y = 2.75; grp.add(pole)
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.07, 0.07), poleMat)
-      arm.position.set(0.6, 5.6, 0); grp.add(arm)
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 7, 7), bulbMat)
-      bulb.position.set(1.2, 5.45, 0); grp.add(bulb)
-      const light = new THREE.PointLight(0xfff5cc, 1.1, 16, 2)
-      light.position.set(1.2, 5.4, 0); grp.add(light)
-      grp.position.set(x, 0, z)
-      this.streetLights.add(grp)
+      const pole = new THREE.CylinderGeometry(0.06, 0.1, 5.5, 5)
+      dummy.position.set(x, 2.75, z); dummy.rotation.set(0,0,0); dummy.updateMatrix()
+      pole.applyMatrix4(dummy.matrix); geoPole.push(pole)
+
+      const arm = new THREE.BoxGeometry(1.2, 0.07, 0.07)
+      dummy.position.set(x+0.6, 5.6, z); dummy.updateMatrix()
+      arm.applyMatrix4(dummy.matrix); geoPole.push(arm)
+
+      const bulb = new THREE.SphereGeometry(0.15, 5, 4)
+      dummy.position.set(x+1.2, 5.42, z); dummy.updateMatrix()
+      bulb.applyMatrix4(dummy.matrix); geoBulb.push(bulb)
+    }
+
+    const mPole = mergeGeometries(geoPole, false)
+    if (mPole) this.scene.add(new THREE.Mesh(mPole, new THREE.MeshLambertMaterial({ color: this.C.lamp })))
+    const mBulb = mergeGeometries(geoBulb, false)
+    if (mBulb) this.scene.add(new THREE.Mesh(mBulb, new THREE.MeshBasicMaterial({ color: 0xff9933 })))
+
+    for (const [x, z] of [[6,6],[-6,-6]] as [number,number][]) {
+      const light = new THREE.PointLight(0xff8833, 3.0, 25, 2)
+      light.position.set(x+1.2, 5.4, z)
+      this.scene.add(light)
     }
   }
 
+  private createCentralFountain(): void {
+    const stone = new THREE.MeshLambertMaterial({ color: this.C.stone })
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(11, 16),
+      new THREE.MeshLambertMaterial({ color: 0xeeddc8 }))
+    plaza.rotation.x = -Math.PI/2; plaza.position.y = 0.02; this.scene.add(plaza)
+
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.32, 5, 16), stone)
+    rim.rotation.x = Math.PI/2; rim.position.y = 0.38; this.scene.add(rim)
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.8, 0.5, 12), stone)
+    base.position.y = 0.25; this.scene.add(base)
+
+    this.fountainWater = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.5, 3.5, 0.15, 14),
+      new THREE.MeshLambertMaterial({ color: this.C.water, transparent: true, opacity: 0.8 }))
+    this.fountainWater.position.y = 0.55; this.scene.add(this.fountainWater)
+
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 4.5, 7), stone)
+    col.position.y = 2.75; this.scene.add(col)
+
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 6, 5), stone)
+    top.position.y = 5.5; this.scene.add(top)
+
+    const fLight = new THREE.PointLight(0x88ccff, 1.2, 12)
+    fLight.position.set(0, 1.5, 0); this.scene.add(fLight)
+  }
+
   private createTrees(): void {
-    const trunkMat = new THREE.MeshLambertMaterial({ color: this.C.trunk })
-    const leafMat  = new THREE.MeshToonMaterial({ color: this.C.leaves })
     const positions: [number, number][] = [
       [-8,8],[8,8],[-8,-8],[8,-8],[15,0],[-15,0],[0,15],[0,-14],
       [12,24],[-12,24],[28,10],[-28,10],[32,-8],[-32,-8],
-      [18,30],[-18,30],[5,40],[-5,40],[40,18],[-40,18],
+      [18,30],[-18,30],[40,18],[-40,18],
     ]
+    const geoTrunks: THREE.BufferGeometry[] = []
+    const geoLeaves: THREE.BufferGeometry[] = []
+    const dummy = new THREE.Object3D()
+
     for (const [x, z] of positions) {
-      const grp = new THREE.Group()
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.23, 2.4, 7), trunkMat)
-      trunk.position.y = 1.2; grp.add(trunk)
-      const bot = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6, 0), leafMat)
-      bot.position.y = 3.2; bot.castShadow = true; grp.add(bot)
-      const top = new THREE.Mesh(new THREE.DodecahedronGeometry(1.05, 0), leafMat)
-      top.position.y = 4.5; top.castShadow = true; grp.add(top)
-      grp.position.set(x, 0, z); this.scene.add(grp)
+      const trunk = new THREE.CylinderGeometry(0.16, 0.23, 2.4, 5)
+      dummy.position.set(x, 1.2, z); dummy.rotation.set(0,0,0); dummy.updateMatrix()
+      trunk.applyMatrix4(dummy.matrix); geoTrunks.push(trunk)
+
+      const bot = new THREE.DodecahedronGeometry(1.6, 0)
+      dummy.position.set(x, 3.2, z); dummy.updateMatrix()
+      bot.applyMatrix4(dummy.matrix); geoLeaves.push(bot)
+
+      const top = new THREE.DodecahedronGeometry(1.05, 0)
+      dummy.position.set(x, 4.5, z); dummy.updateMatrix()
+      top.applyMatrix4(dummy.matrix); geoLeaves.push(top)
+    }
+
+    const mTrunk = mergeGeometries(geoTrunks, false)
+    if (mTrunk) this.scene.add(new THREE.Mesh(mTrunk, new THREE.MeshLambertMaterial({ color: this.C.trunk })))
+    const mLeaf = mergeGeometries(geoLeaves, false)
+    if (mLeaf) {
+      const m = new THREE.Mesh(mLeaf, new THREE.MeshToonMaterial({ color: this.C.leaves }))
+      m.castShadow = true
+      this.scene.add(m)
     }
   }
 
@@ -419,22 +461,45 @@ export class ParisMap {
     const colors = [0xff7090, 0xffc0d0, 0xff7090, 0xffc0d0]
     for (let i = 0; i < 4; i++) {
       const p = new THREE.Mesh(
-        new THREE.SphereGeometry(3.2, 4, 10, (i / 4) * Math.PI * 2, Math.PI / 2),
+        new THREE.SphereGeometry(3.2, 4, 8, (i/4)*Math.PI*2, Math.PI/2),
         new THREE.MeshToonMaterial({ color: colors[i], side: THREE.DoubleSide }))
       p.scale.y = 1.4; this.balloon.add(p)
     }
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.16, 6, 20),
-      new THREE.MeshLambertMaterial({ color: 0xbb5577 }))
-    rim.position.y = -4.2; this.balloon.add(rim)
     const basket = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.5),
       new THREE.MeshLambertMaterial({ color: 0xc09050 }))
     basket.position.y = -5.6; this.balloon.add(basket)
-    const ropeMat = new THREE.MeshBasicMaterial({ color: 0x998833 })
-    for (const [rx, rz] of [[1,1],[-1,1],[1,-1],[-1,-1]]) {
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 3.8, 4), ropeMat)
-      rope.position.set(rx * 1.3, -3.5, rz * 1.3); this.balloon.add(rope)
-    }
     this.balloon.position.set(14, 32, 0); this.scene.add(this.balloon)
+  }
+
+  private loadEiffelTower(): void {
+    new GLTFLoader().load('/eiffel_tower.glb', (gltf) => {
+      const tower = gltf.scene
+      const box = new THREE.Box3().setFromObject(tower)
+      const size = new THREE.Vector3(); box.getSize(size)
+      tower.scale.setScalar(38 / size.y)
+      box.setFromObject(tower)
+      tower.position.set(0, -box.min.y, -55)
+      tower.traverse(c => { if ((c as THREE.Mesh).isMesh) c.castShadow = true })
+      this.scene.add(tower)
+      this.physics.createBox(new CANNON.Vec3(4, 19, 4), new CANNON.Vec3(0, 19, -55))
+    }, undefined, () => this.createEiffelFallback())
+  }
+
+  private createEiffelFallback(): void {
+    const grp = new THREE.Group()
+    const mat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a })
+    for (const [lx, lz] of [[1,1],[-1,1],[1,-1],[-1,-1]] as [number,number][]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.8, 9, 5), mat)
+      leg.position.set(lx*3.5, 4.5, lz*3.5); grp.add(leg)
+    }
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(7, 0.4, 7), mat); p1.position.y = 9; grp.add(p1)
+    const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 2.8, 9, 7), mat); mid.position.y = 14; grp.add(mid)
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.8, 16, 5), mat); spire.position.y = 27; grp.add(spire)
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.2, 5, 4),
+      new THREE.MeshBasicMaterial({ color: 0xff3333 }))
+    tip.position.y = 35; grp.add(tip)
+    grp.position.set(0, 0, -55); this.scene.add(grp)
+    this.physics.createBox(new CANNON.Vec3(4, 18, 4), new CANNON.Vec3(0, 18, -55))
   }
 
   getBounds() {
@@ -443,14 +508,14 @@ export class ParisMap {
   }
 
   getIngredientSpawnPositions(): THREE.Vector3[] {
-    return [
-      new THREE.Vector3(  0,  4.1, -20),  
-      new THREE.Vector3(-46,  0.5,  10),  
-      new THREE.Vector3( 30,  0.5, -22),  
-      new THREE.Vector3(-30,  0.5,  32),  
-      new THREE.Vector3( 15,  0.5, -28),  
-    ]
-  }
+     return [
+    new THREE.Vector3( 15, 0.5,  20),  
+    new THREE.Vector3(-22, 0.5, -20),  
+    new THREE.Vector3(  0, 0.5, -14),  
+    new THREE.Vector3(-35, 0.5,  22),  
+    new THREE.Vector3( 30, 0.5, -27), 
+  ]
+}
 
   getCatPatrolRoutes(): THREE.Vector3[][] {
     return [
@@ -460,5 +525,36 @@ export class ParisMap {
     ]
   }
 
+  isInsideBuilding(x: number, z: number): boolean {
+    for (const bb of this.buildingBounds) {
+      if (x > bb.minX && x < bb.maxX && z > bb.minZ && z < bb.maxZ) return true
+    }
+    return false
+  }
+
+
+  resolveCollision(pos: THREE.Vector3, radius = 0.4): THREE.Vector3 {
+  const out = pos.clone()
+  for (const bb of this.buildingBounds) {
+    const margin = radius
+    if (
+      out.x > bb.minX - margin && out.x < bb.maxX + margin &&
+      out.z > bb.minZ - margin && out.z < bb.maxZ + margin
+    ) {
+      const overlapLeft  = out.x - (bb.minX - margin)
+      const overlapRight = (bb.maxX + margin) - out.x
+      const overlapFront = out.z - (bb.minZ - margin)
+      const overlapBack  = (bb.maxZ + margin) - out.z
+
+      const minOverlap = Math.min(overlapLeft, overlapRight, overlapFront, overlapBack)
+
+      if (minOverlap === overlapLeft)  out.x = bb.minX - margin
+      else if (minOverlap === overlapRight) out.x = bb.maxX + margin
+      else if (minOverlap === overlapFront) out.z = bb.minZ - margin
+      else out.z = bb.maxZ + margin
+    }
+  }
+  return out
+}
   getAmbushPositions(): THREE.Vector3[] { return this.ambushSpots }
 }

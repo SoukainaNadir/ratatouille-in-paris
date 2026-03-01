@@ -1,14 +1,22 @@
-
+import * as THREE from 'three'
 
 export class SoundManager {
   private ctx: AudioContext | null = null
   private enabled = false
 
-  private menuMusic:  HTMLAudioElement
-  private gameMusic:  HTMLAudioElement
-  private catSound:   HTMLAudioElement
+  public listener: THREE.AudioListener
+
+  private meowBuffer: AudioBuffer | null = null
+  private meowLoading = false
+
+  private menuMusic: HTMLAudioElement
+  private gameMusic: HTMLAudioElement
+
+  private winSound: HTMLAudioElement
 
   constructor() {
+    this.listener = new THREE.AudioListener()
+
     this.menuMusic = new Audio('/sounds/Parisian.mp3')
     this.menuMusic.loop = true
     this.menuMusic.volume = 0.6
@@ -17,41 +25,81 @@ export class SoundManager {
     this.gameMusic.loop = true
     this.gameMusic.volume = 0.5
 
-    this.catSound = new Audio('/sounds/412017__skymary__cat-meow-short.wav')
-    this.catSound.volume = 0.8
-
+    this.winSound = new Audio('/sounds/you-win-sequence.mp3')
+    this.winSound.volume = 0.8
     const unlock = () => {
-      if (!this.ctx) {
-        this.ctx = new AudioContext()
-      }
-      if (this.ctx.state === 'suspended') this.ctx.resume()
-      this.enabled = true
+      this.ensureContext()
+      this.loadMeowBuffer() 
     }
     window.addEventListener('keydown',    unlock, { once: true })
     window.addEventListener('click',      unlock, { once: true })
     window.addEventListener('touchstart', unlock, { once: true })
   }
 
-
-  playMenuMusic(): void {
+  private ensureContext(): void {
     if (!this.ctx) {
-      this.ctx = new AudioContext()
+      this.ctx = this.listener.context as AudioContext
     }
     if (this.ctx.state === 'suspended') this.ctx.resume()
     this.enabled = true
+  }
 
+  private async loadMeowBuffer(): Promise<void> {
+    if (this.meowBuffer || this.meowLoading || !this.ctx) return
+    this.meowLoading = true
+    try {
+      const resp = await fetch('/sounds/412017__skymary__cat-meow-short.wav')
+      const arrayBuffer = await resp.arrayBuffer()
+      this.meowBuffer = await this.ctx.decodeAudioData(arrayBuffer)
+      console.log('🐱 Meow buffer loaded for spatial audio')
+    } catch (e) {
+      console.warn('Could not load meow buffer:', e)
+    }
+    this.meowLoading = false
+  }
+
+
+  createCatPositionalAudio(refDistance = 4, maxDistance = 20): THREE.PositionalAudio {
+    const sound = new THREE.PositionalAudio(this.listener)
+    sound.setRefDistance(refDistance)
+    sound.setMaxDistance(maxDistance)
+    sound.setRolloffFactor(2)         
+    sound.setDistanceModel('inverse') 
+    sound.setVolume(0.9)
+    return sound
+  }
+
+
+  playCatMeowSpatial(positionalAudio: THREE.PositionalAudio): void {
+    if (!this.enabled) return
+    if (!this.meowBuffer) {
+      this.ensureContext()
+      this.loadMeowBuffer().then(() => this.playCatMeowSpatial(positionalAudio))
+      return
+    }
+    if (positionalAudio.isPlaying) positionalAudio.stop()
+    positionalAudio.setBuffer(this.meowBuffer)
+    positionalAudio.play()
+  }
+
+
+  playCatGrowlSpatial(positionalAudio: THREE.PositionalAudio, catPos: THREE.Vector3, cameraPos: THREE.Vector3): void {
+    if (!this.enabled || !this.ctx) return
+    const dist = catPos.distanceTo(cameraPos)
+    if (dist > 20) return 
+    const vol = Math.max(0, 1 - dist / 20) * 0.4
+    this.zzfx(vol, 0.1, 60, 0, 0.05, 0.15, 1, 0.3, -1)
+  }
+
+  playMenuMusic(): void {
+    this.ensureContext()
     if (!this.menuMusic.paused) return
-
     this.gameMusic.pause()
     this.gameMusic.currentTime = 0
     this.menuMusic.currentTime = 0
-
-    const playPromise = this.menuMusic.play()
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => { console.log('🎵 Parisian started') })
-        .catch(err => { console.warn('Audio blocked:', err) })
-    }
+    this.menuMusic.play()
+      .then(() => console.log('🎵 Menu music started'))
+      .catch(err => console.warn('Audio blocked:', err))
   }
 
   playGameMusic(): void {
@@ -64,10 +112,21 @@ export class SoundManager {
     }
   }
 
-  stopMusic(): void {
-    this.fadeOut(this.menuMusic, 500)
-    this.fadeOut(this.gameMusic, 500)
+  pauseGameMusic(): void {
+    this.gameMusic.pause()
+    this.menuMusic.pause()
   }
+
+  resumeGameMusic(): void {
+    this.gameMusic.play().catch(() => {})
+  }
+
+ stopMusic(): void {
+  this.fadeOut(this.menuMusic, 500)
+  this.fadeOut(this.gameMusic, 500)
+  this.winSound.pause()
+  this.winSound.currentTime = 0
+}
 
   private fadeOut(audio: HTMLAudioElement, duration: number, onDone?: () => void): void {
     if (audio.paused) { onDone?.(); return }
@@ -87,10 +146,29 @@ export class SoundManager {
     }, interval)
   }
 
+  playCollect(): void {
+    this.zzfx(1,   0, 523, 0,    0.05, 0.2,  0, 1.5)
+    setTimeout(() => this.zzfx(1, 0, 784,  0, 0.03, 0.15, 0, 2),   100)
+    setTimeout(() => this.zzfx(1, 0, 1047, 0, 0.02, 0.2,  0, 3),   200)
+  }
 
-  playCatMeow(): void {
-    this.catSound.currentTime = 0
-    this.catSound.play().catch(() => {})
+playDamage(): void {
+    this.zzfx(1.5, 0.1, 900, 0, 0.02, 0.15, 0, 2, -8)
+    setTimeout(() => this.zzfx(1, 0.2, 120, 0, 0, 0.2, 1, 0.5, -2, 0, 0, 0, 0, 0.5), 80)
+}
+
+  playWin(): void {
+  this.stopMusic()
+  this.winSound.currentTime = 0
+  this.winSound.play().catch(() => {})
+}
+
+  playLose(): void {
+    this.stopMusic()
+    const notes = [400, 300, 200, 130]
+    notes.forEach((freq, i) => {
+      setTimeout(() => this.zzfx(1, 0.05, freq, 0, 0.05, 0.25, 0, 0.7, -1), i * 200)
+    })
   }
 
   private zzfx(
@@ -100,7 +178,9 @@ export class SoundManager {
     pitchJump = 0, pitchJumpTime = 0, repeatTime = 0,
     noise = 0, modulation = 0
   ): void {
-    if (!this.enabled || !this.ctx) return
+    if (!this.enabled) return
+    this.ensureContext()
+    if (!this.ctx) return
     const ctx = this.ctx
     try {
       const sr = ctx.sampleRate
@@ -118,8 +198,8 @@ export class SoundManager {
 
       for (let i = 0; i < length; i++) {
         const env =
-          i < attack_s               ? i / attack_s :
-          i < attack_s + sustain_s   ? 1 :
+          i < attack_s             ? i / attack_s :
+          i < attack_s + sustain_s ? 1 :
           (length - i) / release_s
 
         frequency += slide
@@ -140,32 +220,6 @@ export class SoundManager {
       source.connect(ctx.destination)
       source.start()
     } catch (e) {}
-  }
-
-  playCollect(): void {
-    this.zzfx(1,   0, 523, 0,    0.05, 0.2,  0, 1.5)
-    setTimeout(() => this.zzfx(1, 0, 784,  0, 0.03, 0.15, 0, 2),   100)
-    setTimeout(() => this.zzfx(1, 0, 1047, 0, 0.02, 0.2,  0, 3),   200)
-  }
-
-  playDamage(): void {
-    this.zzfx(2, 0.3, 80, 0, 0, 0.3, 1, 0.5, -4, 0, 0, 0, 0, 0.8)
-  }
-
-  playWin(): void {
-    this.stopMusic()
-    const notes = [523, 659, 784, 1047]
-    notes.forEach((freq, i) => {
-      setTimeout(() => this.zzfx(1.2, 0, freq, 0, 0.1, 0.3, 0, 2), i * 160)
-    })
-  }
-
-  playLose(): void {
-    this.stopMusic()
-    const notes = [400, 300, 200, 130]
-    notes.forEach((freq, i) => {
-      setTimeout(() => this.zzfx(1, 0.05, freq, 0, 0.05, 0.25, 0, 0.7, -1), i * 200)
-    })
   }
 
   toggle(): void {
