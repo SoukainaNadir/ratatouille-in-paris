@@ -471,26 +471,23 @@ export class ParisMap {
     this.balloon.position.set(14, 32, 0); this.scene.add(this.balloon)
   }
 
-  private loadEiffelTower(): void {
-  new GLTFLoader().load('/eiffel_tower.glb', (gltf) => {
+private loadEiffelTower(): void {
+  const BASE = '/ratatouille-in-paris/'
+
+  new GLTFLoader().load(`${BASE}eiffel_tower.glb`, (gltf) => {
     const tower = gltf.scene
     const box = new THREE.Box3().setFromObject(tower)
     const size = new THREE.Vector3(); box.getSize(size)
     tower.scale.setScalar(38 / size.y)
     box.setFromObject(tower)
     tower.position.set(0, -box.min.y, -55)
-
-    const towerMat = new THREE.MeshToonMaterial({ color: 0x4a4a5a })
-    tower.traverse(c => {
-      if ((c as THREE.Mesh).isMesh) {
-        c.castShadow = true
-        ;(c as THREE.Mesh).material = towerMat
-      }
-    })
-
+    tower.traverse(c => { if ((c as THREE.Mesh).isMesh) c.castShadow = true })
     this.scene.add(tower)
     this.physics.createBox(new CANNON.Vec3(4, 19, 4), new CANNON.Vec3(0, 19, -55))
-  }, undefined, () => this.createEiffelFallback())
+  }, undefined, (err) => {
+    console.error('Eiffel GLB failed:', err) 
+    this.createEiffelFallback()
+  })
 }
 
   private createEiffelFallback(): void {
