@@ -20,7 +20,6 @@ export class Rat {
   private jumpForce = 8
   private keys:       Set<string> = new Set()
 
-  // ── 🎮 Joystick mobile input (injecté par GameEngine chaque frame) ────────
   private joystickDx = 0
   private joystickDz = 0
 
@@ -38,6 +37,11 @@ export class Rat {
   private hatTiltTarget   = 0
   private hatTilt         = 0
 
+  private toonMaterials:      THREE.MeshToonMaterial[] = []
+  private baseMaterialColors: number[]                 = []
+  private indoorFactor = 0   
+  private targetIndoor = 0
+
   constructor(physics: PhysicsWorld) {
     this.physics = physics
     this.mesh    = new THREE.Group()
@@ -47,58 +51,88 @@ export class Rat {
     this.setupControls()
   }
 
-  // ── 🎮 API joystick ───────────────────────────────────────────────────────
-  /** Appelé par GameEngine avant chaque update() pour injecter le vecteur joystick */
   setJoystickInput(dx: number, dz: number): void {
     this.joystickDx = dx
     this.joystickDz = dz
   }
 
-  // ── Helpers matériaux ─────────────────────────────────────────────────────
-  private toon(hex: number)                           { return new THREE.MeshToonMaterial({ color: hex }) }
-  private glossy(hex: number, shin = 80)              { return new THREE.MeshPhongMaterial({ color: hex, shininess: shin, specular: 0xffffff }) }
 
-  // ── Mesh ──────────────────────────────────────────────────────────────────
+private toon(hex: number): THREE.MeshToonMaterial {
+  const mat = new THREE.MeshToonMaterial({ color: hex })
+  this.toonMaterials.push(mat)
+  this.baseMaterialColors.push(hex)
+  return mat
+}
+  private glossy(hex: number, shin = 80) { return new THREE.MeshPhongMaterial({ color: hex, shininess: shin, specular: 0xffffff }) }
+
   private buildMesh(): void {
-    const FUR = 0x9aafc4, FUR_LT = 0xbdd0e0, FUR_DK = 0x6a8096
-    const BELLY = 0xece0cc, EAR_MID = 0xf0aaaa, EAR_DEEP = 0xd88090
-    const NOSE_P = 0xee8888, CHEEK_B = 0xf0b0b8, PAW_C = 0xddd0b8
-    const HAT_W = 0xf5f2ea, HAT_BD = 0xe0dbd0, TAIL_C = 0xd4b8a8
+    const FUR = 0x5b6a7d
 
-    // Corps
+const FUR_LT = 0x6b7a8d
+const FUR_DK = 0x3f4b59
+    const BELLY = 0xf5e6c8, EAR_MID = 0xf088aa, EAR_DEEP = 0xcc5070
+    const HAT_W = 0xf0ece0, HAT_BD = 0xc8b89a, TAIL_C = 0xb89888
+    const NOSE_P = 0xee5566, CHEEK_B = 0xf09898, PAW_C = 0xccc0a0
+
     this.bodyGroup = new THREE.Group()
-    this.bodyGroup.position.set(0, -0.05, 0)
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 32, 24), this.toon(FUR))
-    body.scale.set(1.0, 0.72, 1.60); body.castShadow = true
-    const dorsalPatch = new THREE.Mesh(new THREE.SphereGeometry(0.20, 20, 14), this.toon(FUR_LT))
-    dorsalPatch.scale.set(0.72, 0.40, 1.10); dorsalPatch.position.set(0, 0.16, 0); body.add(dorsalPatch)
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 16), this.toon(BELLY))
-    belly.scale.set(0.78, 0.90, 0.38); belly.position.set(0, -0.06, 0.26); body.add(belly)
-    this.bodyGroup.add(body); this.mesh.add(this.bodyGroup)
+    this.bodyGroup.position.set(0, -0.02, 0)
 
-    // Tête
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.30, 32, 24), this.toon(FUR))
+                                                       
+    body.scale.set(1.0, 0.80, 1.10)  
+    body.castShadow = true
+
+    const dorsalPatch = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 14), this.toon(FUR_LT))
+    dorsalPatch.scale.set(0.72, 0.38, 0.80); dorsalPatch.position.set(0, 0.18, 0)
+    body.add(dorsalPatch)
+
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 16), this.toon(BELLY))
+    belly.scale.set(0.78, 0.80, 0.45); belly.position.set(0, -0.06, 0.20)
+    body.add(belly)
+
+    this.bodyGroup.add(body)
+    this.mesh.add(this.bodyGroup)
+
     this.headGroup = new THREE.Group()
-    this.headGroup.position.set(0, 0.08, 0.46); this.headGroup.rotation.x = -0.30
+    this.headGroup.position.set(0, 0.18, 0.30) 
+    this.headGroup.rotation.x = -0.20
+
     const skull = new THREE.Mesh(new THREE.SphereGeometry(0.310, 36, 28), this.toon(FUR))
-    skull.scale.set(1.0, 1.0, 0.94); skull.castShadow = true; this.headGroup.add(skull)
+    skull.scale.set(1.0, 1.0, 0.94); skull.castShadow = true
+    this.headGroup.add(skull)
+
     const headTop = new THREE.Mesh(new THREE.SphereGeometry(0.230, 22, 16), this.toon(FUR_LT))
-    headTop.scale.set(0.82, 0.52, 0.68); headTop.position.set(0, 0.20, 0.02); this.headGroup.add(headTop)
+    headTop.scale.set(0.82, 0.52, 0.68); headTop.position.set(0, 0.20, 0.02)
+    this.headGroup.add(headTop)
+
     for (const side of [-1, 1]) {
       const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.185, 20, 16), this.toon(FUR_LT))
-      cheek.scale.set(0.82, 0.72, 0.52); cheek.position.set(side * 0.240, -0.04, 0.190); this.headGroup.add(cheek)
+      cheek.scale.set(0.82, 0.72, 0.52); cheek.position.set(side * 0.240, -0.04, 0.190)
+      this.headGroup.add(cheek)
       const blush = new THREE.Mesh(new THREE.SphereGeometry(0.085, 14, 10), this.toon(CHEEK_B))
-      blush.scale.set(1.10, 0.55, 0.22); blush.position.set(side * 0.255, -0.055, 0.238); this.headGroup.add(blush)
+      blush.scale.set(1.10, 0.55, 0.22); blush.position.set(side * 0.255, -0.055, 0.238)
+      this.headGroup.add(blush)
     }
+
     const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.155, 24, 18), this.toon(BELLY))
-    muzzle.scale.set(1.0, 0.65, 0.90); muzzle.position.set(0, -0.105, 0.268); this.headGroup.add(muzzle)
+    muzzle.scale.set(1.0, 0.65, 0.90); muzzle.position.set(0, -0.105, 0.268)
+    this.headGroup.add(muzzle)
+
     const muzzleTop = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 14), this.toon(BELLY))
-    muzzleTop.scale.set(0.86, 0.52, 0.82); muzzleTop.position.set(0, -0.050, 0.265); this.headGroup.add(muzzleTop)
+    muzzleTop.scale.set(0.86, 0.52, 0.82); muzzleTop.position.set(0, -0.050, 0.265)
+    this.headGroup.add(muzzleTop)
+
     const nose = new THREE.Mesh(new THREE.SphereGeometry(0.058, 18, 14), this.glossy(NOSE_P, 120))
-    nose.scale.set(1.0, 0.88, 0.88); nose.position.set(0, -0.070, 0.395); this.headGroup.add(nose)
+    nose.scale.set(1.0, 0.88, 0.88); nose.position.set(0, -0.070, 0.395)
+    this.headGroup.add(nose)
+
     const noseShine = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }))
-    noseShine.position.set(-0.018, -0.048, 0.446); this.headGroup.add(noseShine)
+    noseShine.position.set(-0.018, -0.048, 0.446)
+    this.headGroup.add(noseShine)
+
     const smile = new THREE.Mesh(new THREE.SphereGeometry(0.020, 10, 6), this.toon(0xcc8888))
-    smile.scale.set(2.8, 0.42, 0.50); smile.position.set(0, -0.130, 0.355); this.headGroup.add(smile)
+    smile.scale.set(2.8, 0.42, 0.50); smile.position.set(0, -0.130, 0.355)
+    this.headGroup.add(smile)
 
     // Yeux
     for (const side of [-1, 1]) {
@@ -106,7 +140,7 @@ export class Rat {
       eyeG.position.set(side * 0.138, 0.072, 0.252)
       const outline = new THREE.Mesh(new THREE.SphereGeometry(0.075, 18, 14), new THREE.MeshBasicMaterial({ color: 0x111111 }))
       outline.scale.set(1.05, 1.05, 0.38); eyeG.add(outline)
-      const iris = new THREE.Mesh(new THREE.SphereGeometry(0.068, 18, 14), this.toon(0x2244cc))
+      const iris = new THREE.Mesh(new THREE.SphereGeometry(0.068, 18, 14), this.toon(0x1b1717))
       iris.scale.set(1.0, 1.0, 0.40); iris.position.z = 0.008; eyeG.add(iris)
       const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.038, 14, 12), new THREE.MeshBasicMaterial({ color: 0x050508 }))
       pupil.scale.set(1.0, 1.2, 0.35); pupil.position.z = 0.020; eyeG.add(pupil)
@@ -157,10 +191,10 @@ export class Rat {
 
     // Pattes
     const legDef = [
-      { x: -0.210, z:  0.230, rotZ:  0.25, front: true  },
-      { x:  0.210, z:  0.230, rotZ: -0.25, front: true  },
-      { x: -0.195, z: -0.230, rotZ:  0.20, front: false },
-      { x:  0.195, z: -0.230, rotZ: -0.20, front: false },
+      { x: -0.220, z:  0.140, rotZ:  0.25, front: true  }, 
+      { x:  0.220, z:  0.140, rotZ: -0.25, front: true  },
+      { x: -0.205, z: -0.140, rotZ:  0.20, front: false },  
+      { x:  0.205, z: -0.140, rotZ: -0.20, front: false },
     ]
     for (const def of legDef) {
       const lg = new THREE.Group(); lg.position.set(def.x, 0, def.z)
@@ -183,11 +217,15 @@ export class Rat {
       this.legs.push(lg); this.mesh.add(lg)
     }
 
-    // Queue
+    // Queue 
     const tPts: THREE.Vector3[] = []
     for (let i = 0; i <= 20; i++) {
       const t = i / 20
-      tPts.push(new THREE.Vector3(Math.sin(t * Math.PI * 2.2) * 0.24 * t, 0.0 - t * 0.055, -0.32 - t * 0.58))
+      tPts.push(new THREE.Vector3(
+        Math.sin(t * Math.PI * 2.2) * 0.24 * t,
+        0.0 - t * 0.055,
+        -0.20 - t * 0.55  
+      ))
     }
     this.tail = new THREE.Mesh(
       new THREE.TubeGeometry(new THREE.CatmullRomCurve3(tPts), 28, 0.022, 8, false), this.toon(TAIL_C)
@@ -198,7 +236,6 @@ export class Rat {
     this.mesh.castShadow = true
   }
 
-  // ── Physics ───────────────────────────────────────────────────────────────
   private buildPhysics(): void {
     this.body = new CANNON.Body({
       mass: 5, shape: new CANNON.Sphere(0.36),
@@ -209,7 +246,6 @@ export class Rat {
     this.physics.world.addBody(this.body)
   }
 
-  // ── Clavier ───────────────────────────────────────────────────────────────
   private setupControls(): void {
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code)
@@ -226,13 +262,11 @@ export class Rat {
     this.hatTiltTarget    = 0.55
   }
 
-  // ── Update ────────────────────────────────────────────────────────────────
   update(dt: number, cameraYaw: number): void {
     this.animTime        += dt
     this.invincibleTimer -= dt
     if (this.invincibleTimer <= 0) this.state.isInvincible = false
 
-    // Sol
     if (this.body.position.y <= 0.5) {
       this.state.isGrounded = true
       this.body.position.y  = 0.5
@@ -241,7 +275,6 @@ export class Rat {
       this.state.isGrounded = false
     }
 
-    // ── Input fusionné : clavier + joystick ───────────────────────────────
     let dx = this.joystickDx
     let dz = this.joystickDz
 
@@ -250,7 +283,6 @@ export class Rat {
     if (this.keys.has('KeyA')     || this.keys.has('ArrowLeft'))  dx -= 1
     if (this.keys.has('KeyD')     || this.keys.has('ArrowRight')) dx += 1
 
-    // Normaliser pour éviter une vitesse diagonale > 1
     const len = Math.sqrt(dx*dx + dz*dz)
     if (len > 1) { dx /= len; dz /= len }
 
@@ -274,6 +306,7 @@ export class Rat {
     this.animLegs()
     this.animHat()
     this.animEyes()
+    this.updateShading(dt)
     this.tail.rotation.y = Math.sin(this.animTime * 2.5) * 0.42
     this.tail.rotation.x = Math.sin(this.animTime * 1.8) * 0.10
 
@@ -285,7 +318,6 @@ export class Rat {
     }
   }
 
-  // ── Animations ────────────────────────────────────────────────────────────
   private animLegs(): void {
     if (this.state.isRunning) {
       const t = this.animTime * 9, amp = 0.45
@@ -293,12 +325,12 @@ export class Rat {
       this.legs[1].children[0].rotation.x =  Math.sin(t + Math.PI) * amp
       this.legs[2].children[0].rotation.x =  Math.sin(t + Math.PI) * amp
       this.legs[3].children[0].rotation.x =  Math.sin(t)           * amp
-      this.bodyGroup.position.y = -0.05 + Math.sin(t * 2) * 0.015
-      this.headGroup.position.y =  0.08 + Math.sin(t * 2 + 0.4) * 0.012
+      this.bodyGroup.position.y = -0.02 + Math.sin(t * 2) * 0.015
+      this.headGroup.position.y =  0.18 + Math.sin(t * 2 + 0.4) * 0.012
     } else {
       const b = Math.sin(this.animTime * 1.5) * 0.010
-      this.bodyGroup.position.y = -0.05 + b * 0.5
-      this.headGroup.position.y =  0.08 + b * 0.7
+      this.bodyGroup.position.y = -0.02 + b * 0.5
+      this.headGroup.position.y =  0.18 + b * 0.7
       for (const lg of this.legs)
         lg.children[0].rotation.x = THREE.MathUtils.lerp(lg.children[0].rotation.x as number, 0, 0.10)
     }
@@ -318,7 +350,6 @@ export class Rat {
     this.rightEyeGroup.scale.y = 1 - blink * 0.96
   }
 
-  // ── Gameplay ──────────────────────────────────────────────────────────────
   takeDamage(): void {
     if (this.state.isInvincible) return
     this.state.lives--
@@ -327,6 +358,25 @@ export class Rat {
     this.hatTiltTarget      = 1.5
     this.body.velocity.y    = 5
     this.body.velocity.x   += (Math.random() - 0.5) * 8
+  }
+
+
+
+  setIndoor(inside: boolean): void {
+    this.targetIndoor = inside ? 1 : 0
+  }
+
+  private updateShading(dt: number): void {
+    this.indoorFactor = THREE.MathUtils.lerp(this.indoorFactor, this.targetIndoor, dt * 3.0)
+
+    const dark = this.indoorFactor * 0.55
+
+    for (let i = 0; i < this.toonMaterials.length; i++) {
+      const base = new THREE.Color(this.baseMaterialColors[i])
+const shaded = base.clone().lerp(new THREE.Color(0x000000), dark)
+this.toonMaterials[i].color.copy(shaded)
+      this.toonMaterials[i].needsUpdate = true
+    }
   }
 
   getPosition(): THREE.Vector3 { return this.mesh.position.clone() }

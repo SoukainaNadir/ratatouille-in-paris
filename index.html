@@ -321,6 +321,19 @@
       transition: all 0.2s;
     }
     #pause-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
+
+    @media (max-width: 768px) {
+      #inventory {
+        bottom: 15px;
+        padding: 8px 12px;
+        gap: 6px;
+      }
+      .inv-slot {
+        width: 36px;
+        height: 36px;
+        font-size: 1.1rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -391,14 +404,12 @@
   }
 </style>
 
-<!-- Loading Screen -->
 <div id="loading" style="display:none;">
   <div style="font-size:4rem">🐀</div>
   <p>CHARGEMENT DE PARIS...</p>
   <div class="loader-bar"><div class="loader-fill" style="animation-duration: 3.5s;"></div></div>
 </div>
 
-<!-- Intro Screen -->
 <div id="intro-screen" style="display:none;pointer-events:none">
   <h1>🐀 Chef en Fuite</h1>
   <div class="subtitle">Ratatouille: The WebGL Experience</div>
@@ -433,7 +444,6 @@
   <div id="minimap"><canvas id="minimap-canvas" width="120" height="120"></canvas></div>
 </div>
 
-<!-- Win Screen -->
 <div id="win-screen">
   <div style="font-size:5rem">🏆</div>
   <h2>MAGNIFIQUE !</h2>
@@ -442,7 +452,6 @@
   <button class="end-btn" onclick="location.reload()">Rejouer</button>
 </div>
 
-<!-- Lose Screen -->
 <div id="lose-screen">
   <div style="font-size:5rem">😿</div>
   <h2>MON DIEU !</h2>
@@ -451,7 +460,6 @@
 
 </div>
 
-<!-- Pause Screen -->
 <div id="pause-screen">
   <h2>PAUSE</h2>
   <p>ESC pour reprendre</p>
