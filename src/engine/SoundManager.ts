@@ -12,6 +12,8 @@ export class SoundManager {
   private menuMusic: HTMLAudioElement
   private gameMusic: HTMLAudioElement
 
+  private winSound: HTMLAudioElement
+
   constructor() {
     this.listener = new THREE.AudioListener()
 
@@ -23,6 +25,8 @@ export class SoundManager {
     this.gameMusic.loop = true
     this.gameMusic.volume = 0.5
 
+    this.winSound = new Audio('/sounds/you-win-sequence.mp3')
+    this.winSound.volume = 0.8
     const unlock = () => {
       this.ensureContext()
       this.loadMeowBuffer() 
@@ -117,10 +121,12 @@ export class SoundManager {
     this.gameMusic.play().catch(() => {})
   }
 
-  stopMusic(): void {
-    this.fadeOut(this.menuMusic, 500)
-    this.fadeOut(this.gameMusic, 500)
-  }
+ stopMusic(): void {
+  this.fadeOut(this.menuMusic, 500)
+  this.fadeOut(this.gameMusic, 500)
+  this.winSound.pause()
+  this.winSound.currentTime = 0
+}
 
   private fadeOut(audio: HTMLAudioElement, duration: number, onDone?: () => void): void {
     if (audio.paused) { onDone?.(); return }
@@ -152,12 +158,10 @@ playDamage(): void {
 }
 
   playWin(): void {
-    this.stopMusic()
-    const notes = [523, 659, 784, 1047]
-    notes.forEach((freq, i) => {
-      setTimeout(() => this.zzfx(1.2, 0, freq, 0, 0.1, 0.3, 0, 2), i * 160)
-    })
-  }
+  this.stopMusic()
+  this.winSound.currentTime = 0
+  this.winSound.play().catch(() => {})
+}
 
   playLose(): void {
     this.stopMusic()

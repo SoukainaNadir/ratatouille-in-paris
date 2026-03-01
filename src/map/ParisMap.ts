@@ -508,14 +508,14 @@ export class ParisMap {
   }
 
   getIngredientSpawnPositions(): THREE.Vector3[] {
-    return [
-      new THREE.Vector3(  0, 0.5,   0),
-      new THREE.Vector3(-46, 0.5,  10),
-      new THREE.Vector3( 30, 0.5, -22),
-      new THREE.Vector3(-30, 0.5,  32),
-      new THREE.Vector3( 15, 0.5, -10),
-    ]
-  }
+     return [
+    new THREE.Vector3( 15, 0.5,  20),  
+    new THREE.Vector3(-22, 0.5, -20),  
+    new THREE.Vector3(  0, 0.5, -14),  
+    new THREE.Vector3(-35, 0.5,  22),  
+    new THREE.Vector3( 30, 0.5, -27), 
+  ]
+}
 
   getCatPatrolRoutes(): THREE.Vector3[][] {
     return [
@@ -532,5 +532,29 @@ export class ParisMap {
     return false
   }
 
+
+  resolveCollision(pos: THREE.Vector3, radius = 0.4): THREE.Vector3 {
+  const out = pos.clone()
+  for (const bb of this.buildingBounds) {
+    const margin = radius
+    if (
+      out.x > bb.minX - margin && out.x < bb.maxX + margin &&
+      out.z > bb.minZ - margin && out.z < bb.maxZ + margin
+    ) {
+      const overlapLeft  = out.x - (bb.minX - margin)
+      const overlapRight = (bb.maxX + margin) - out.x
+      const overlapFront = out.z - (bb.minZ - margin)
+      const overlapBack  = (bb.maxZ + margin) - out.z
+
+      const minOverlap = Math.min(overlapLeft, overlapRight, overlapFront, overlapBack)
+
+      if (minOverlap === overlapLeft)  out.x = bb.minX - margin
+      else if (minOverlap === overlapRight) out.x = bb.maxX + margin
+      else if (minOverlap === overlapFront) out.z = bb.minZ - margin
+      else out.z = bb.maxZ + margin
+    }
+  }
+  return out
+}
   getAmbushPositions(): THREE.Vector3[] { return this.ambushSpots }
 }
